@@ -1,0 +1,13 @@
+{
+  "name": "@dnd/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx --env-file=../../.env src/index.ts",
+    "test": "tsx --test src/engine.test.ts"
+  },
+  "dependencies": {
+    "@google/genai": "^2.30.0"
+  }
+}
