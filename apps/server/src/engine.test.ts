@@ -11,10 +11,10 @@ const state = GameStateSchema.parse({
   enemies: [{ id: "e1", name: "Гоблин-часовой", hp: 7, maxHp: 7 }],
 });
 
-// rng = 0 даёт 1 на кубике, 0.5 даёт 11, 0.999 даёт 20
+// rng = 0 rolls 1 on the die, 0.5 rolls 11, 0.999 rolls 20
 const fixed = (v: number) => () => v;
 
-test("провал: 1 + модификатор 5 против DC 10", () => {
+test("failure: 1 + modifier 5 vs DC 10", () => {
   const r = rollCheck(state, { characterId: "p1", skill: "stealth", dc: 10 }, fixed(0));
   assert.ok(r.isOk);
   assert.equal(r.event.roll, 1);
@@ -22,31 +22,31 @@ test("провал: 1 + модификатор 5 против DC 10", () => {
   assert.equal(r.event.success, false);
 });
 
-test("успех при равенстве: 11 + 5 = 16 против DC 16", () => {
+test("success on tie: 11 + 5 = 16 vs DC 16", () => {
   const r = rollCheck(state, { characterId: "p1", skill: "stealth", dc: 16 }, fixed(0.5));
   assert.ok(r.isOk);
   assert.equal(r.event.total, 16);
   assert.equal(r.event.success, true);
 });
 
-test("навык вне листа: модификатор 0", () => {
+test("skill not on sheet: modifier 0", () => {
   const r = rollCheck(state, { characterId: "p1", skill: "intimidation", dc: 10 }, fixed(0.5));
   assert.ok(r.isOk);
   assert.equal(r.event.modifier, 0);
 });
 
-test("проверка не меняет состояние: возвращается то же самое", () => {
+test("check does not change state: returns the same object", () => {
   const r = rollCheck(state, { characterId: "p1", skill: "stealth", dc: 10 }, fixed(0.5));
   assert.ok(r.isOk);
   assert.equal(r.state, state);
 });
 
-test("неизвестный персонаж даёт ошибку", () => {
+test("unknown character returns an error", () => {
   const r = rollCheck(state, { characterId: "nobody", skill: "stealth", dc: 10 });
   assert.equal(r.isOk, false);
 });
 
-test("урон уменьшает HP и не меняет исходное состояние", () => {
+test("damage reduces HP and does not mutate the original state", () => {
   const r = applyDamage(state, { targetId: "p1", amount: 4 });
   assert.ok(r.isOk);
   assert.equal(r.event.hpBefore, 12);
@@ -55,14 +55,14 @@ test("урон уменьшает HP и не меняет исходное со�
   assert.equal(state.players[0].hp, 12);
 });
 
-test("HP не уходит ниже нуля, цель побеждена", () => {
+test("HP does not go below zero, target is defeated", () => {
   const r = applyDamage(state, { targetId: "e1", amount: 100 });
   assert.ok(r.isOk);
   assert.equal(r.event.hpAfter, 0);
   assert.equal(r.event.isDefeated, true);
 });
 
-test("неизвестная цель даёт ошибку", () => {
+test("unknown target returns an error", () => {
   const r = applyDamage(state, { targetId: "ghost", amount: 1 });
   assert.equal(r.isOk, false);
 });
