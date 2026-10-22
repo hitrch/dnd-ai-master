@@ -1,7 +1,8 @@
 import type {GameState} from "@dnd/shared";
 import {randomUUID} from "node:crypto";
+import {ActionStore} from "./types";
 
-export class GameStateService {
+export class GameStateService implements ActionStore {
   private readonly _rooms: Map<string, {state: GameState, isLocked: boolean}> = new Map()
 
   async createRoom(state: GameState): Promise<string> {
@@ -19,7 +20,7 @@ export class GameStateService {
     return this._rooms.delete(id)
   }
 
-  async startActionInRoomById(id: string): Promise<GameState> {
+  async startAction(id: string): Promise<GameState> {
     const room = this._rooms.get(id)
     if(!room) throw new Error(`Room with id ${id} not found`)
     if(room.isLocked) throw new Error(`Room with id ${id} has active action`)
@@ -27,14 +28,14 @@ export class GameStateService {
     return structuredClone(room.state)
   }
 
-  async commitActionInRoomById(id: string, state: GameState): Promise<void> {
+  async commitAction(id: string, state: GameState): Promise<void> {
     const room = this._rooms.get(id)
     if(!room) throw new Error(`Room with id ${id} not found`)
     if(!room.isLocked) throw new Error(`Room with id ${id} has no active action`)
     this._rooms.set(id, {state: structuredClone(state), isLocked: false})
   }
 
-  async cancelActionInRoomById(id: string): Promise<void> {
+  async cancelAction(id: string): Promise<void> {
     const room = this._rooms.get(id)
     if(!room) throw new Error(`Room with id ${id} not found`)
     if(!room.isLocked) throw new Error(`Room with id ${id} has no active action`)

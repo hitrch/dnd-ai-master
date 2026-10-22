@@ -1,0 +1,7 @@
+import { GameState } from "@dnd/shared"
+
+export interface ActionStore {
+  startAction: (roomId: string) => Promise<GameState>
+  commitAction: (roomId: string, state: GameState) => Promise<void>
+  cancelAction: (roomId: string) => Promise<void>
+}

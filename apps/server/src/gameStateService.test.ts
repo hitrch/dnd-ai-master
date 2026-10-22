@@ -84,59 +84,59 @@ const damaged = () => {
 test("start returns a draft equal to the current state", async () => {
   const service = new GameStateService();
   const id = await service.createRoom(makeState());
-  assert.deepEqual(await service.startActionInRoomById(id), makeState());
+  assert.deepEqual(await service.startAction(id), makeState());
 });
 
 test("mutating the draft does not change the stored state", async () => {
   const service = new GameStateService();
   const id = await service.createRoom(makeState());
-  const draft = await service.startActionInRoomById(id);
+  const draft = await service.startAction(id);
   draft.enemies[0].hp = 0;
   assert.deepEqual(await service.getRoomById(id), makeState());
 });
 
 test("start in an unknown room is rejected", async () => {
   const service = new GameStateService();
-  await assert.rejects(service.startActionInRoomById("missing"), /not found/);
+  await assert.rejects(service.startAction("missing"), /not found/);
 });
 
 test("second start while an action is active is rejected", async () => {
   const service = new GameStateService();
   const id = await service.createRoom(makeState());
-  await service.startActionInRoomById(id);
-  await assert.rejects(service.startActionInRoomById(id), /active action/);
+  await service.startAction(id);
+  await assert.rejects(service.startAction(id), /active action/);
 });
 
 test("an active action in one room does not block another room", async () => {
   const service = new GameStateService();
   const a = await service.createRoom(makeState());
   const b = await service.createRoom(makeState());
-  await service.startActionInRoomById(a);
-  await assert.doesNotReject(service.startActionInRoomById(b));
+  await service.startAction(a);
+  await assert.doesNotReject(service.startAction(b));
 });
 
 test("commit stores the new state", async () => {
   const service = new GameStateService();
   const id = await service.createRoom(makeState());
-  await service.startActionInRoomById(id);
-  await service.commitActionInRoomById(id, damaged());
+  await service.startAction(id);
+  await service.commitAction(id, damaged());
   assert.deepEqual(await service.getRoomById(id), damaged());
 });
 
 test("commit releases the lock: a new action can start", async () => {
   const service = new GameStateService();
   const id = await service.createRoom(makeState());
-  await service.startActionInRoomById(id);
-  await service.commitActionInRoomById(id, damaged());
-  assert.deepEqual(await service.startActionInRoomById(id), damaged());
+  await service.startAction(id);
+  await service.commitAction(id, damaged());
+  assert.deepEqual(await service.startAction(id), damaged());
 });
 
 test("mutating the committed object afterwards does not change the stored state", async () => {
   const service = new GameStateService();
   const id = await service.createRoom(makeState());
-  await service.startActionInRoomById(id);
+  await service.startAction(id);
   const next = damaged();
-  await service.commitActionInRoomById(id, next);
+  await service.commitAction(id, next);
   next.enemies[0].hp = 0;
   assert.deepEqual(await service.getRoomById(id), damaged());
 });
@@ -144,56 +144,56 @@ test("mutating the committed object afterwards does not change the stored state"
 test("cancel keeps the previous state and releases the lock", async () => {
   const service = new GameStateService();
   const id = await service.createRoom(makeState());
-  const draft = await service.startActionInRoomById(id);
+  const draft = await service.startAction(id);
   draft.enemies[0].hp = 0;
-  await service.cancelActionInRoomById(id);
+  await service.cancelAction(id);
   assert.deepEqual(await service.getRoomById(id), makeState());
-  assert.deepEqual(await service.startActionInRoomById(id), makeState());
+  assert.deepEqual(await service.startAction(id), makeState());
 });
 
 test("reading during an action returns the last committed state", async () => {
   const service = new GameStateService();
   const id = await service.createRoom(makeState());
-  await service.startActionInRoomById(id);
+  await service.startAction(id);
   assert.deepEqual(await service.getRoomById(id), makeState());
 });
 
 test("commit without an active action is rejected and changes nothing", async () => {
   const service = new GameStateService();
   const id = await service.createRoom(makeState());
-  await assert.rejects(service.commitActionInRoomById(id, damaged()), /no active action/);
+  await assert.rejects(service.commitAction(id, damaged()), /no active action/);
   assert.deepEqual(await service.getRoomById(id), makeState());
 });
 
 test("cancel without an active action is rejected", async () => {
   const service = new GameStateService();
   const id = await service.createRoom(makeState());
-  await assert.rejects(service.cancelActionInRoomById(id), /no active action/);
+  await assert.rejects(service.cancelAction(id), /no active action/);
 });
 
 test("committing the same action twice is rejected", async () => {
   const service = new GameStateService();
   const id = await service.createRoom(makeState());
-  await service.startActionInRoomById(id);
-  await service.commitActionInRoomById(id, damaged());
-  await assert.rejects(service.commitActionInRoomById(id, makeState()), /no active action/);
+  await service.startAction(id);
+  await service.commitAction(id, damaged());
+  await assert.rejects(service.commitAction(id, makeState()), /no active action/);
   assert.deepEqual(await service.getRoomById(id), damaged());
 });
 
 test("commit after the room was deleted is rejected and does not resurrect it", async () => {
   const service = new GameStateService();
   const id = await service.createRoom(makeState());
-  await service.startActionInRoomById(id);
+  await service.startAction(id);
   await service.deleteRoomById(id);
-  await assert.rejects(service.commitActionInRoomById(id, damaged()), /not found/);
+  await assert.rejects(service.commitAction(id, damaged()), /not found/);
   assert.equal(await service.getRoomById(id), undefined);
 });
 
 test("cancel after the room was deleted is rejected and does not resurrect it", async () => {
   const service = new GameStateService();
   const id = await service.createRoom(makeState());
-  await service.startActionInRoomById(id);
+  await service.startAction(id);
   await service.deleteRoomById(id);
-  await assert.rejects(service.cancelActionInRoomById(id), /not found/);
+  await assert.rejects(service.cancelAction(id), /not found/);
   assert.equal(await service.getRoomById(id), undefined);
 });

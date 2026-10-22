@@ -1,15 +1,13 @@
-import type { GameState } from "@dnd/shared";
 import type { Content } from "@google/genai";
+import type {ActionStore} from "./types";
 
 export class Master {
-  private _state: GameState;
-  private _messages: Content[] = [];
+  private readonly _roomId: string
+  private readonly _store: ActionStore
+  private readonly _messages: Content[] = []
 
-  constructor(state: GameState) {
-    this._state = state;
-  }
-
-  get state(): GameState {
-    return this._state;
+  constructor(store: ActionStore, roomId: string) {
+    this._store = store
+    this._roomId = roomId
   }
 }
