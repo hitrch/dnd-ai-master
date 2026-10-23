@@ -16,9 +16,9 @@ const state = GameStateSchema.parse({
 });
 console.dir(state, { depth: null });
 
-// навыка "flying" нет в списке, схема должна отклонить вызов
+// "flying" is not in the skill list, the schema must reject the call
 const bad = RollCheckArgsSchema.safeParse({ characterId: "p1", skill: "flying", dc: 10 });
-console.log("flying принят:", bad.success);
+console.log("flying accepted:", bad.success);
 
 const good = RollCheckArgsSchema.safeParse({ characterId: "p1", skill: "stealth", dc: 12 });
-console.log("stealth принят:", good.success);
+console.log("stealth accepted:", good.success);

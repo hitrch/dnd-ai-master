@@ -5,7 +5,7 @@ export const CharacterSchema = z.object({
   name: z.string(),
   hp: z.number().int(),
   maxHp: z.number().int().positive(),
-  // ключ - название навыка, значение - модификатор
+  // key - skill name, value - modifier
   skills: z.record(z.string(), z.number().int()),
 });
 export type Character = z.infer<typeof CharacterSchema>;

@@ -1,6 +1,11 @@
-import {GameState, RollCheckArgs, ApplyDamageArgs, CheckEvent, DamageEvent, ReturnResult, Tool} from "@dnd/shared";
+import type {
+  GameState,
+  RollCheckArgs,
+  ApplyDamageArgs,
+  ReturnResult,
+} from "@dnd/shared";
 
-// Генератор случайных чисел [0, 1). В игре Math.random, в тестах подменяем.
+// Random number generator in [0, 1). Math.random in the game, replaced in tests.
 export type Rng = () => number;
 
 export function rollD20(rng: Rng = Math.random): number {
@@ -9,9 +14,9 @@ export function rollD20(rng: Rng = Math.random): number {
 
 export function rollCheck(state: GameState, args: RollCheckArgs, rng: Rng = Math.random): ReturnResult<"roll_check"> {
   const character = state.players.find((p) => p.id === args.characterId);
-  if (!character) return {isOk: false, errorText: `Неизвестный персонаж: ${args.characterId}`};
+  if (!character) return {isOk: false, errorText: `Unknown character: ${args.characterId}`};
 
-  // навык, которого нет в листе, считается нетренированным: модификатор 0
+  // a skill missing from the sheet is untrained: modifier 0
   const modifier = character.skills[args.skill] ?? 0;
   const roll = rollD20(rng);
   const total = roll + modifier;
@@ -34,7 +39,7 @@ export function rollCheck(state: GameState, args: RollCheckArgs, rng: Rng = Math
 export function applyDamage(state: GameState, args: ApplyDamageArgs): ReturnResult<"apply_damage"> {
   const {targetId, amount} = args;
   const known = state.players.some((p) => p.id === targetId) || state.enemies.some((e) => e.id === targetId);
-  if (!known) return {isOk: false, errorText: `Неизвестная цель: ${targetId}`};
+  if (!known) return {isOk: false, errorText: `Unknown target: ${targetId}`};
 
   let targetName = "";
   let hpBefore = 0;
