@@ -1,7 +1,8 @@
-import type {Content} from "@google/genai"
-import type {ActionStore, ToolCall, ToolRunResult} from "./types"
-import {applyDamage, Rng, rollCheck} from "./engine"
-import {GameRecord, GameState, isTool, ToolArgsSchemas} from "@dnd/shared"
+import type {ActionStore, ModelProvider, StoryMessage, ToolCall, ToolRunResult} from "./types"
+import {applyDamage, rollCheck} from "./engine"
+import type {Rng} from "./engine"
+import {isTool, ToolArgsSchemas} from "@dnd/shared"
+import type {GameState, GameRecord, Tool} from "@dnd/shared"
 
 
 export function executeTools(tools: ToolCall[], gameState: GameState, rng: Rng): ToolRunResult {
@@ -39,20 +40,47 @@ export function executeTools(tools: ToolCall[], gameState: GameState, rng: Rng):
 export class Master {
   private readonly _roomId: string
   private readonly _store: ActionStore
-  private readonly _messages: Content[] = []
+  private readonly _messages: StoryMessage[] = []
+  private readonly _model: ModelProvider
+  private readonly _rng: Rng
+  private readonly _maxRounds = 5
 
-  constructor(store: ActionStore, roomId: string) {
+  constructor(store: ActionStore, roomId: string, model: ModelProvider, rng: Rng = Math.random) {
     this._store = store
     this._roomId = roomId
+    this._model = model
+    this._rng = rng
   }
 
-  async handleMessage(text: string) {
-    const temporalGameState = await this._store.startAction(this._roomId)
+  async handleMessage(text: string): Promise<string> {
+    let draft = await this._store.startAction(this._roomId)
     try {
+      const messages: StoryMessage[] = [{messageType: "player_text", text}]
+      const tools: Tool[] = Object.keys(ToolArgsSchemas) as Tool[]
 
+      for (let i = 0; i < this._maxRounds; i++) {
+        const modelResponse = await this._model.generate([...this._messages, ...messages], tools)
+        messages.push(modelResponse)
+        switch (modelResponse.messageType) {
+          case "model_text": {
+            await this._store.commitAction(this._roomId, draft)
+            this._messages.push(...messages)
+            return modelResponse.text
+          }
+          case "tool_calls": {
+            const executionResult = executeTools(modelResponse.calls, draft, this._rng)
+            draft = executionResult.state
+            messages.push({messageType: "tool_results", records: executionResult.records})
+            break
+          }
+          default: {
+            const unreachable: never = modelResponse
+            throw new Error(`Invalid model response: ${JSON.stringify(unreachable)}`)
+          }
+        }
+      }
 
-
-      await this._store.commitAction(this._roomId, temporalGameState)
+      throw new Error(`Max round reached ${this._maxRounds}`)
     } catch (e) {
       await this._store.cancelAction(this._roomId)
       throw e
