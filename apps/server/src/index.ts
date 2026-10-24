@@ -1,5 +1,4 @@
 import { GameStateSchema, RollCheckArgsSchema } from "@dnd/shared";
-import {Master} from "./master";
 
 const state = GameStateSchema.parse({
   location: "Подножие башни",

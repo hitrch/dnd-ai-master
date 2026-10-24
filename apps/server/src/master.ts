@@ -1,8 +1,8 @@
 import type {ActionStore, ModelProvider, StoryMessage, ToolCall, ToolRunResult} from "./types"
-import {applyDamage, rollCheck} from "./engine"
 import type {Rng} from "./engine"
+import {applyDamage, rollCheck} from "./engine"
+import type {GameRecord, GameState, Tool} from "@dnd/shared"
 import {isTool, ToolArgsSchemas} from "@dnd/shared"
-import type {GameState, GameRecord, Tool} from "@dnd/shared"
 
 
 export function executeTools(tools: ToolCall[], gameState: GameState, rng: Rng): ToolRunResult {
@@ -74,12 +74,10 @@ export class Master {
             break
           }
           default: {
-            const unreachable: never = modelResponse
-            throw new Error(`Invalid model response: ${JSON.stringify(unreachable)}`)
+            throw new Error(`Invalid model response: ${JSON.stringify(modelResponse)}`)
           }
         }
       }
-
       throw new Error(`Max round reached ${this._maxRounds}`)
     } catch (e) {
       await this._store.cancelAction(this._roomId)
