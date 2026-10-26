@@ -13,7 +13,7 @@ export type ToolMap = {
     args: ApplyDamageArgs
   },
 }
-export type Tool = keyof ToolMap
+export type ToolName = keyof ToolMap
 
 export type CheckEvent = {
   characterId: string
@@ -43,7 +43,7 @@ export type GameRecord = {
   }
 } [keyof ToolMap]
 
-export type ReturnResult<T extends Tool> =
+export type ReturnResult<T extends ToolName> =
   | {
   isOk: false
   errorText: string

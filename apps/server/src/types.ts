@@ -1,4 +1,4 @@
-import type {GameRecord, GameState, Tool} from "@dnd/shared"
+import type {GameRecord, GameState, ToolName} from "@dnd/shared"
 
 export interface ActionStore {
   startAction: (roomId: string) => Promise<GameState>
@@ -8,7 +8,9 @@ export interface ActionStore {
 
 export type ToolCall = {
   name: string
-  args: unknown
+  args: Record<string, unknown>
+  // Opaque provider data that must be sent back with the call in history (Gemini thought signature)
+  signature?: string
 }
 
 export type ToolRunResult = {
@@ -36,6 +38,12 @@ export type ModelResponse =
   calls: [ToolCall, ...ToolCall[]]
 }
 
+export interface ToolDefinition {
+  name: ToolName
+  description: string
+  argsSchema: Record<string, unknown>
+}
+
 export interface ModelProvider {
-  generate(messages: StoryMessage[], tools: Tool[]): Promise<ModelResponse>
+  generate(messages: StoryMessage[], tools: ToolDefinition[]): Promise<ModelResponse>
 }

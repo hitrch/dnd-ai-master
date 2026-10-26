@@ -1,9 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { GameStateSchema } from "@dnd/shared";
-import type { GameState, Tool } from "@dnd/shared";
+import type { GameState } from "@dnd/shared";
 import { executeTools, Master } from "./master";
-import type { ActionStore, ModelProvider, ModelResponse, StoryMessage } from "./types";
+import type { ActionStore, ModelProvider, ModelResponse, StoryMessage, ToolDefinition } from "./types";
 
 const state = GameStateSchema.parse({
   location: "Подножие башни",
@@ -173,7 +173,7 @@ function fakeStore(initial: GameState) {
 
 // Scripted model: returns responses in order and snapshots every request
 function fakeModel(script: Array<ModelResponse | Error>) {
-  const calls: { messages: StoryMessage[]; tools: Tool[] }[] = [];
+  const calls: { messages: StoryMessage[]; tools: ToolDefinition[] }[] = [];
   const model: ModelProvider = {
     async generate(messages, tools) {
       calls.push({ messages: structuredClone(messages), tools: [...tools] });
@@ -228,7 +228,12 @@ test("handleMessage: model is offered every tool", async () => {
   const { model, calls } = fakeModel([say("ok")]);
   await new Master(store, ROOM, model, fixed(0.5)).handleMessage("hi");
 
-  assert.deepEqual([...calls[0].tools].sort(), ["apply_damage", "roll_check"]);
+  const tools = calls[0].tools;
+  assert.deepEqual(tools.map((t) => t.name).sort(), ["apply_damage", "roll_check"]);
+  for (const t of tools) {
+    assert.ok(t.description.length > 0, `${t.name} has no description`);
+    assert.equal(t.argsSchema.type, "object", `${t.name} args schema is not a JSON Schema object`);
+  }
 });
 
 test("handleMessage: tool calls are applied and the final state is committed", async () => {

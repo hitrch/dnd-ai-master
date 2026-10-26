@@ -1,4 +1,15 @@
-import { GameStateSchema, RollCheckArgsSchema } from "@dnd/shared";
+import { GameStateSchema } from "@dnd/shared";
+import { GameStateService } from "./gameStateService";
+import { GeminiProvider } from "./geminiProvider";
+import { Master } from "./master";
+import type { ModelProvider } from "./types";
+
+// Manual check: one real Gemini request through Master, the model should call roll_check
+
+const apiKey = process.env.GEMINI_API_KEY;
+const modelName = process.env.GEMINI_MODEL;
+if (!apiKey) throw new Error("GEMINI_API_KEY is not set");
+if (!modelName) throw new Error("GEMINI_MODEL is not set");
 
 const state = GameStateSchema.parse({
   location: "Подножие башни",
@@ -13,11 +24,22 @@ const state = GameStateSchema.parse({
   ],
   enemies: [{ id: "e1", name: "Гоблин-часовой", hp: 7, maxHp: 7 }],
 });
-console.dir(state, { depth: null });
 
-// "flying" is not in the skill list, the schema must reject the call
-const bad = RollCheckArgsSchema.safeParse({ characterId: "p1", skill: "flying", dc: 10 });
-console.log("flying accepted:", bad.success);
+// Wraps a provider to print what the model really returns, so tool calls are visible
+function withLogging(provider: ModelProvider): ModelProvider {
+  return {
+    async generate(messages, tools) {
+      const response = await provider.generate(messages, tools);
+      console.log("[model]", JSON.stringify(response));
+      return response;
+    },
+  };
+}
 
-const good = RollCheckArgsSchema.safeParse({ characterId: "p1", skill: "stealth", dc: 12 });
-console.log("stealth accepted:", good.success);
+const store = new GameStateService();
+const roomId = await store.createRoom(state);
+const master = new Master(store, roomId, withLogging(new GeminiProvider(apiKey, modelName)));
+
+const answer = await master.handleMessage("Я Арвен (id p1), крадусь мимо гоблина-часового к двери башни.");
+console.log("[answer]", answer);
+console.dir(await store.getRoomById(roomId), { depth: null });

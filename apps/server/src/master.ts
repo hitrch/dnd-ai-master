@@ -1,8 +1,10 @@
 import type {ActionStore, ModelProvider, StoryMessage, ToolCall, ToolRunResult} from "./types"
-import type {Rng} from "./engine"
 import {applyDamage, rollCheck} from "./engine"
-import type {GameRecord, GameState, Tool} from "@dnd/shared"
-import {isTool, ToolArgsSchemas} from "@dnd/shared"
+import type {Rng} from "./engine"
+import {ToolArgsSchemas} from "@dnd/shared"
+import type {GameState, GameRecord} from "@dnd/shared"
+import {isTool} from "./utils";
+import {toolDefinitions} from "./toolDefinitions";
 
 
 export function executeTools(tools: ToolCall[], gameState: GameState, rng: Rng): ToolRunResult {
@@ -56,10 +58,9 @@ export class Master {
     let draft = await this._store.startAction(this._roomId)
     try {
       const messages: StoryMessage[] = [{messageType: "player_text", text}]
-      const tools: Tool[] = Object.keys(ToolArgsSchemas) as Tool[]
 
       for (let i = 0; i < this._maxRounds; i++) {
-        const modelResponse = await this._model.generate([...this._messages, ...messages], tools)
+        const modelResponse = await this._model.generate([...this._messages, ...messages], toolDefinitions)
         messages.push(modelResponse)
         switch (modelResponse.messageType) {
           case "model_text": {
@@ -74,7 +75,8 @@ export class Master {
             break
           }
           default: {
-            throw new Error(`Invalid model response: ${JSON.stringify(modelResponse)}`)
+            const unreachable: never = modelResponse
+            throw new Error(`Invalid model response: ${JSON.stringify(unreachable)}`)
           }
         }
       }

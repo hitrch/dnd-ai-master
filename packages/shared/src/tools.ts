@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { SkillSchema } from "./skills";
-import type {Tool} from "./types";
+import type {ToolName} from "./types";
 
 export const RollCheckArgsSchema = z.object({
   characterId: z.string(),
@@ -18,8 +18,4 @@ export type ApplyDamageArgs = z.infer<typeof ApplyDamageArgsSchema>;
 export const ToolArgsSchemas = {
   roll_check: RollCheckArgsSchema,
   apply_damage: ApplyDamageArgsSchema,
-} satisfies Record<Tool, z.ZodType>
-
-export function isTool(name: string): name is Tool {
-  return Object.hasOwn(ToolArgsSchemas, name);
-}
+} satisfies Record<ToolName, z.ZodType>
