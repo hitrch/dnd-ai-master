@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { GameStateSchema } from "@dnd/shared";
 import type { GameState } from "@dnd/shared";
 import { executeTools, Master } from "./master";
+import { modelDefinition } from "./modelDefinition";
 import type { ActionStore, ModelProvider, ModelResponse, StoryMessage, ToolDefinition } from "./types";
 
 const state = GameStateSchema.parse({
@@ -173,10 +174,10 @@ function fakeStore(initial: GameState) {
 
 // Scripted model: returns responses in order and snapshots every request
 function fakeModel(script: Array<ModelResponse | Error>) {
-  const calls: { messages: StoryMessage[]; tools: ToolDefinition[] }[] = [];
+  const calls: { messages: StoryMessage[]; tools: ToolDefinition[]; systemInstruction: string }[] = [];
   const model: ModelProvider = {
-    async generate(messages, tools) {
-      calls.push({ messages: structuredClone(messages), tools: [...tools] });
+    async generate(messages, tools, systemInstruction) {
+      calls.push({ messages: structuredClone(messages), tools: [...tools], systemInstruction });
       const next = script.shift();
       if (next === undefined) throw new Error("Fake model script is exhausted");
       if (next instanceof Error) throw next;
@@ -234,6 +235,51 @@ test("handleMessage: model is offered every tool", async () => {
     assert.ok(t.description.length > 0, `${t.name} has no description`);
     assert.equal(t.argsSchema.type, "object", `${t.name} args schema is not a JSON Schema object`);
   }
+});
+
+// The state is the JSON object after the role text; the role text itself has no braces
+function stateFromInstruction(instruction: string): unknown {
+  const start = instruction.indexOf("{");
+  assert.ok(start >= 0, "system instruction has no JSON state");
+  return JSON.parse(instruction.slice(start));
+}
+
+test("handleMessage: system instruction contains the master role and the room state", async () => {
+  const { store } = fakeStore(state);
+  const { model, calls } = fakeModel([say("ok")]);
+  await new Master(store, ROOM, model, fixed(0.5)).handleMessage("hi");
+
+  const instruction = calls[0].systemInstruction;
+  assert.ok(!instruction.includes("[object Object]"), "an object was concatenated into the instruction");
+  assert.ok(instruction.includes(modelDefinition.modelInstruction), "role text is missing");
+  assert.ok(
+    instruction.indexOf(modelDefinition.modelInstruction) < instruction.indexOf("{"),
+    "role text should come before the state",
+  );
+  assert.deepEqual(stateFromInstruction(instruction), state);
+});
+
+test("handleMessage: each round's system instruction shows the current draft", async () => {
+  const { store } = fakeStore(state);
+  const { model, calls } = fakeModel([damage("e1", 3), say("ok")]);
+  await new Master(store, ROOM, model, fixed(0.5)).handleMessage("Бью гоблина");
+
+  const first = stateFromInstruction(calls[0].systemInstruction) as GameState;
+  const second = stateFromInstruction(calls[1].systemInstruction) as GameState;
+  assert.equal(first.enemies[0].hp, 7);
+  assert.equal(second.enemies[0].hp, 4);
+});
+
+test("handleMessage: system instruction is not stored in history", async () => {
+  const { store } = fakeStore(state);
+  const { model, calls } = fakeModel([say("ok"), say("ok")]);
+  const master = new Master(store, ROOM, model, fixed(0.5));
+  await master.handleMessage("Раз");
+  await master.handleMessage("Два");
+
+  const serialized = JSON.stringify(calls[1].messages);
+  assert.ok(!serialized.includes(modelDefinition.modelInstruction));
+  assert.ok(!serialized.includes("Подножие башни"));
 });
 
 test("handleMessage: tool calls are applied and the final state is committed", async () => {

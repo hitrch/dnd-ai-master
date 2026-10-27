@@ -1,6 +1,6 @@
 import type {GameState} from "@dnd/shared";
 import {randomUUID} from "node:crypto";
-import {ActionStore} from "./types";
+import type {ActionStore} from "./types";
 
 export class GameStateService implements ActionStore {
   private readonly _rooms: Map<string, {state: GameState, isLocked: boolean}> = new Map()

@@ -1,4 +1,5 @@
-import {Content, GenerateContentResponse, GoogleGenAI, Tool} from "@google/genai";
+import {GoogleGenAI} from "@google/genai";
+import type {Content, GenerateContentResponse, Tool} from "@google/genai";
 import type {ModelProvider, ModelResponse, StoryMessage, ToolCall, ToolDefinition} from "./types";
 import {isArrayNotEmpty} from "./utils";
 
@@ -60,12 +61,12 @@ export function translateContentResponseToModelResponse(response: GenerateConten
   }
   if(isArrayNotEmpty(calls)) return {messageType: "tool_calls", calls: calls}
   if(response.text) return {messageType: "model_text",  text: response.text}
-  throw new Error(`Invalid response: ${JSON.stringify(response)}`)
+  throw new Error(`Invalid response: no text and no tool calls, finishReason: ${response.candidates?.[0]?.finishReason}`)
 }
 
-export function translateToolDefinitionsToTools(toolDefinition: ToolDefinition[]): Tool[] {
+export function translateToolDefinitionsToTools(toolDefinitions: ToolDefinition[]): Tool[] {
   return [{
-    functionDeclarations: toolDefinition.map(td => {
+    functionDeclarations: toolDefinitions.map(td => {
       return {name: td.name, description: td.description, parametersJsonSchema: td.argsSchema}
     })
   }]
@@ -80,10 +81,10 @@ export class GeminiProvider implements ModelProvider {
     this._modelName = modelName
   }
 
-  async generate(messages: StoryMessage[], toolDefinition: ToolDefinition[]): Promise<ModelResponse> {
+  async generate(messages: StoryMessage[], toolDefinitions: ToolDefinition[], systemInstruction: string): Promise<ModelResponse> {
     const contents = translateStoryMessagesToContent(messages)
-    const tools = translateToolDefinitionsToTools(toolDefinition)
-    const res = await this._client.models.generateContent({ model: this._modelName, contents, config: { tools } })
+    const tools = translateToolDefinitionsToTools(toolDefinitions)
+    const res = await this._client.models.generateContent({ model: this._modelName, contents, config: { tools, systemInstruction } })
     return translateContentResponseToModelResponse(res)
   }
 }

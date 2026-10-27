@@ -5,6 +5,7 @@ import {ToolArgsSchemas} from "@dnd/shared"
 import type {GameState, GameRecord} from "@dnd/shared"
 import {isTool} from "./utils";
 import {toolDefinitions} from "./toolDefinitions";
+import {modelDefinition} from "./modelDefinition";
 
 
 export function executeTools(tools: ToolCall[], gameState: GameState, rng: Rng): ToolRunResult {
@@ -60,7 +61,8 @@ export class Master {
       const messages: StoryMessage[] = [{messageType: "player_text", text}]
 
       for (let i = 0; i < this._maxRounds; i++) {
-        const modelResponse = await this._model.generate([...this._messages, ...messages], toolDefinitions)
+        const instructions = modelDefinition.modelInstruction + "\n" + JSON.stringify(draft)
+        const modelResponse = await this._model.generate([...this._messages, ...messages], toolDefinitions, instructions)
         messages.push(modelResponse)
         switch (modelResponse.messageType) {
           case "model_text": {

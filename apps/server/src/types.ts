@@ -45,5 +45,5 @@ export interface ToolDefinition {
 }
 
 export interface ModelProvider {
-  generate(messages: StoryMessage[], tools: ToolDefinition[]): Promise<ModelResponse>
+  generate(messages: StoryMessage[], tools: ToolDefinition[], systemInstruction: string): Promise<ModelResponse>
 }

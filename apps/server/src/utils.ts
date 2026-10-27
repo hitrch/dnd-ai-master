@@ -1,4 +1,5 @@
-import {ToolName, ToolArgsSchemas} from "@dnd/shared";
+import {ToolArgsSchemas} from "@dnd/shared";
+import type {ToolName} from "@dnd/shared";
 
 export function isArrayNotEmpty<T>(arr: T[]): arr is [T, ...T[]] {
   return arr.length > 0
