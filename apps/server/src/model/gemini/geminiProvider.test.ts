@@ -1,15 +1,17 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { GenerateContentResponse } from "@google/genai";
+import { ApiError, GenerateContentResponse } from "@google/genai";
 import type { Part } from "@google/genai";
 import type { GameRecord } from "@dnd/shared";
 import {
   translateContentResponseToModelResponse,
   translateStoryMessagesToContent,
+  translateToModelError,
   translateToolDefinitionsToTools,
 } from "./geminiProvider";
-import { toolDefinitions } from "../master/toolDefinitions";
+import { toolDefinitions } from "../../master/toolDefinitions";
 import type { ToolDefinition } from "../types";
+import { ModelError } from "../modelError";
 
 const checkRecord: GameRecord = {
   tool: "roll_check",
@@ -254,4 +256,63 @@ test("toTools: every real tool definition is declared", () => {
     tool.functionDeclarations?.map((d) => d.name),
     toolDefinitions.map((d) => d.name),
   );
+});
+
+function apiError(status: number): ApiError {
+  return new ApiError({ message: `{"error":{"code":${status}}}`, status });
+}
+
+test("toModelError: 429 is retryable", () => {
+  assert.equal(translateToModelError(apiError(429)).isRetryable, true);
+});
+
+test("toModelError: 500 and 503 are retryable", () => {
+  assert.equal(translateToModelError(apiError(500)).isRetryable, true);
+  assert.equal(translateToModelError(apiError(503)).isRetryable, true);
+});
+
+test("toModelError: 400, 401, 403, 404 are not retryable", () => {
+  for (const status of [400, 401, 403, 404]) {
+    assert.equal(translateToModelError(apiError(status)).isRetryable, false, `status ${status}`);
+  }
+});
+
+test("toModelError: api error keeps the original error as cause", () => {
+  const original = apiError(503);
+  const result = translateToModelError(original);
+  assert.equal(result.cause, original);
+  assert.match(result.message, /503/);
+});
+
+test("toModelError: timeout (AbortError) is retryable and keeps the cause", () => {
+  // fetch rejects with a DOMException named AbortError when the SDK timeout fires
+  const original = new DOMException("This operation was aborted", "AbortError");
+  const result = translateToModelError(original);
+  assert.equal(result.isRetryable, true);
+  assert.equal(result.cause, original);
+});
+
+test("toModelError: other errors are wrapped with message and cause", () => {
+  const original = new TypeError("fetch failed");
+  const result = translateToModelError(original);
+  assert.ok(result instanceof ModelError);
+  assert.match(result.message, /fetch failed/);
+  assert.equal(result.cause, original);
+});
+
+test("toModelError: non-Error value is wrapped with its text", () => {
+  const result = translateToModelError("boom");
+  assert.ok(result instanceof ModelError);
+  assert.match(result.message, /boom/);
+});
+
+test("toModelError: ModelError is returned as is", () => {
+  const original = translateToModelError("boom");
+  assert.equal(translateToModelError(original), original);
+});
+
+test("toModelError: result is an Error named ModelError", () => {
+  const result = translateToModelError(apiError(503));
+  assert.ok(result instanceof Error);
+  assert.equal(result.name, "ModelError");
 });

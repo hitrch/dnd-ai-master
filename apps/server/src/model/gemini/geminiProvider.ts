@@ -1,7 +1,8 @@
-import {GoogleGenAI} from "@google/genai";
+import {ApiError, GoogleGenAI} from "@google/genai";
 import type {Content, GenerateContentResponse, Tool} from "@google/genai";
 import type {ModelProvider, ModelResponse, StoryMessage, ToolCall, ToolDefinition} from "../types";
-import {isArrayNotEmpty} from "../utils";
+import {isArrayNotEmpty} from "../../utils";
+import {ModelError} from "../modelError";
 
 export function translateStoryMessagesToContent(messages: StoryMessage[]): Content[] {
   const content: Content[] = []
@@ -72,19 +73,38 @@ export function translateToolDefinitionsToTools(toolDefinitions: ToolDefinition[
   }]
 }
 
+export function translateToModelError(arg: unknown): ModelError {
+  if(arg instanceof ModelError) return arg
+  if(arg instanceof ApiError) {
+    const isRetryable = arg.status === 429 || arg.status >= 500
+    return new ModelError(arg.message, isRetryable, {cause: arg})
+  }
+  if(arg instanceof Error && arg.name === "AbortError") return new ModelError(arg.message, true, {cause: arg})
+  const errorMessage = arg instanceof Error ? arg.message : String(arg)
+  // Everything else: network failures (fetch failed) and malformed model responses
+  // (e.g. finishReason MALFORMED_FUNCTION_CALL). Both are transient: the network recovers
+  // and the model is nondeterministic, so a repeat often succeeds.Retries are bounded,
+  // so a bug in our own translation code only costs a few extra attempts.
+  return new ModelError(errorMessage, true, {cause: arg})
+}
+
 export class GeminiProvider implements ModelProvider {
   private readonly _client: GoogleGenAI
   private readonly _modelName: string
 
-  constructor(apiKey: string, modelName: string) {
-    this._client = new GoogleGenAI({ apiKey })
+  constructor(apiKey: string, modelName: string, timeout: number) {
+    this._client = new GoogleGenAI({ apiKey, httpOptions: {timeout}})
     this._modelName = modelName
   }
 
   async generate(messages: StoryMessage[], toolDefinitions: ToolDefinition[], systemInstruction: string): Promise<ModelResponse> {
-    const contents = translateStoryMessagesToContent(messages)
-    const tools = translateToolDefinitionsToTools(toolDefinitions)
-    const res = await this._client.models.generateContent({ model: this._modelName, contents, config: { tools, systemInstruction } })
-    return translateContentResponseToModelResponse(res)
+    try {
+      const contents = translateStoryMessagesToContent(messages)
+      const tools = translateToolDefinitionsToTools(toolDefinitions)
+      const res = await this._client.models.generateContent({ model: this._modelName, contents, config: { tools, systemInstruction } })
+      return translateContentResponseToModelResponse(res)
+    } catch (e) {
+      throw translateToModelError(e)
+    }
   }
 }

@@ -4,7 +4,8 @@ import { GameStateSchema } from "@dnd/shared";
 import type { GameState } from "@dnd/shared";
 import { executeTools, Master } from "./master";
 import { modelDefinition } from "./modelDefinition";
-import type { ActionStore, ModelProvider, ModelResponse, StoryMessage, ToolDefinition } from "../types";
+import type { ModelProvider, ModelResponse, StoryMessage, ToolDefinition } from "../model/types";
+import type {ActionStore} from "../types";
 
 const state = GameStateSchema.parse({
   location: "Подножие башни",

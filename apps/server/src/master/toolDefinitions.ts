@@ -1,7 +1,7 @@
 import type {ToolName} from "@dnd/shared"
 import {ToolArgsSchemas} from "@dnd/shared"
 import { z } from "zod"
-import type {ToolDefinition} from "../types";
+import type {ToolDefinition} from "../model/types";
 
 // Instructions for the model: what the tool does, when to call it and what to do with the result
 export const ToolDescriptions = {

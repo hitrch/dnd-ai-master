@@ -1,4 +1,4 @@
-import type {ActionStore, ModelProvider, StoryMessage, ToolCall, ToolRunResult} from "../types"
+import type { ModelProvider, StoryMessage, ToolCall} from "../model/types"
 import {applyDamage, rollCheck} from "../engine/engine"
 import type {Rng} from "../engine/engine"
 import {ToolArgsSchemas} from "@dnd/shared"
@@ -6,6 +6,7 @@ import type {GameState, GameRecord} from "@dnd/shared"
 import {isTool} from "../utils";
 import {toolDefinitions} from "./toolDefinitions";
 import {modelDefinition} from "./modelDefinition";
+import type {ActionStore, ToolRunResult} from "../types";
 
 
 export function executeTools(tools: ToolCall[], gameState: GameState, rng: Rng): ToolRunResult {
