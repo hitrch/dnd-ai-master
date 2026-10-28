@@ -8,8 +8,8 @@ import {
   translateStoryMessagesToContent,
   translateToolDefinitionsToTools,
 } from "./geminiProvider";
-import { toolDefinitions } from "./toolDefinitions";
-import type { ToolDefinition } from "./types";
+import { toolDefinitions } from "../master/toolDefinitions";
+import type { ToolDefinition } from "../types";
 
 const checkRecord: GameRecord = {
   tool: "roll_check",

@@ -1,7 +1,7 @@
 import { GameStateSchema } from "@dnd/shared";
-import { GameStateService } from "./gameStateService";
-import { GeminiProvider } from "./geminiProvider";
-import { Master } from "./master";
+import { GameStateService } from "./storage/gameStateService";
+import { GeminiProvider } from "./gemini/geminiProvider";
+import { Master } from "./master/master";
 import type { ModelProvider } from "./types";
 
 // Manual check: one real Gemini request through Master, the model should call roll_check

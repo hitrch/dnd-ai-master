@@ -1,7 +1,7 @@
 import {GoogleGenAI} from "@google/genai";
 import type {Content, GenerateContentResponse, Tool} from "@google/genai";
-import type {ModelProvider, ModelResponse, StoryMessage, ToolCall, ToolDefinition} from "./types";
-import {isArrayNotEmpty} from "./utils";
+import type {ModelProvider, ModelResponse, StoryMessage, ToolCall, ToolDefinition} from "../types";
+import {isArrayNotEmpty} from "../utils";
 
 export function translateStoryMessagesToContent(messages: StoryMessage[]): Content[] {
   const content: Content[] = []
