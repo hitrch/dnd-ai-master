@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "tsx --env-file=../../.env src/index.ts",
-    "test": "tsx --test \"src/**/*.test.ts\""
+    "test": "tsx --test \"src/**/*.test.ts\"",
+    "play": "tsx --env-file=../../.env src/cli/play.ts"
   },
   "dependencies": {
     "@google/genai": "^2.30.0",
