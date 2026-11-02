@@ -1,22 +1,38 @@
 import { GameStateSchema } from "@dnd/shared";
 import { GameStateService } from "./storage/gameStateService";
 import { GeminiProvider } from "./model/gemini/geminiProvider";
+import { GroqProvider } from "./model/groq/groqProvider";
 import { RetryingModelProvider } from "./model/retryingModelProvider";
 import { ModelError } from "./model/modelError";
 import { Master } from "./master/master";
 import type { ModelProvider } from "./model/types";
 
-// Manual check: one real Gemini request through Master, the model should call roll_check
+// Manual check: one real model request through Master, the model should call roll_check
 // with the character id taken from the game state in the system instruction
 
-const apiKey = process.env.GEMINI_API_KEY;
-const modelName = process.env.GEMINI_MODEL;
 // Gemini itself answers 504 after ~19 s, so a longer client timeout buys nothing.
 // Worst case per model call: 3 attempts x 15 s + 1 s + 2 s of pauses ~ 48 s
 const timeoutMs = 15_000;
 const retryOptions = { maxAttempts: 3, baseDelayMs: 1000 };
-if (!apiKey) throw new Error("GEMINI_API_KEY is not set");
-if (!modelName) throw new Error("GEMINI_MODEL is not set");
+
+function requireEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) throw new Error(`${name} is not set`);
+  return value;
+}
+
+// MODEL_PROVIDER picks the model behind Master: "groq" (default) or "gemini"
+function createProvider(): ModelProvider {
+  const provider = process.env.MODEL_PROVIDER ?? "groq";
+  switch (provider) {
+    case "groq":
+      return new GroqProvider(requireEnv("GROQ_API_KEY"), requireEnv("GROQ_MODEL"), timeoutMs);
+    case "gemini":
+      return new GeminiProvider(requireEnv("GEMINI_API_KEY"), requireEnv("GEMINI_MODEL"), timeoutMs);
+    default:
+      throw new Error(`Unknown MODEL_PROVIDER: ${provider}`);
+  }
+}
 
 const state = GameStateSchema.parse({
   location: "Подножие башни",
@@ -50,8 +66,7 @@ function withLogging(provider: ModelProvider): ModelProvider {
 }
 
 // Logging sits inside the retries, so every attempt is printed, not only the final result
-const gemini = new GeminiProvider(apiKey, modelName, timeoutMs);
-const model = new RetryingModelProvider(withLogging(gemini), retryOptions);
+const model = new RetryingModelProvider(withLogging(createProvider()), retryOptions);
 
 const store = new GameStateService();
 const roomId = await store.createRoom(state);
