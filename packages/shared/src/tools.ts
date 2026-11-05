@@ -11,7 +11,9 @@ export type RollCheckArgs = z.infer<typeof RollCheckArgsSchema>;
 
 export const ApplyDamageArgsSchema = z.object({
   targetId: z.string(),
-  amount: z.number().int().positive(),
+  diceCount: z.number().int().min(1).max(10),
+  diceSides: z.literal([4, 6, 8, 10, 12, 20]),
+  bonus: z.number().int().min(0).max(10),
 });
 export type ApplyDamageArgs = z.infer<typeof ApplyDamageArgsSchema>;
 

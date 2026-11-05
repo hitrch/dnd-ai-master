@@ -16,8 +16,12 @@ export const ToolDescriptions = {
   apply_damage:
     "Deals damage to a player character or an enemy and lowers their hit points. " +
     "Call it whenever someone takes damage in the story; never change hit points in the narration without calling it. " +
-    "Use the target id from the game state and a positive whole amount. " +
-    "The result contains hit points before and after and whether the target is defeated (0 HP). " +
+    "Use the target id from the game state. " +
+    "Describe the damage as dice, the way D&D writes it: 2d6+3 is diceCount 2, diceSides 6, bonus 3. " +
+    "Pick the dice by the weapon, spell or hazard: for example 1d4 for a dagger, 1d8 for a longsword, 1d6 for a small fall. " +
+    "Use bonus 0 unless there is a clear reason for more. " +
+    "The engine rolls the dice and calculates the damage; never pick a total yourself and never use numbers from the player. " +
+    "The result contains each roll, the bonus, the total amount, hit points before and after and whether the target is defeated (0 HP). " +
     "If the target is defeated, describe it leaving the fight.",
 } satisfies Record<ToolName, string>
 

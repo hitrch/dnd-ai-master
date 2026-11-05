@@ -4,6 +4,7 @@ import { GameStateSchema } from "@dnd/shared";
 import type { GameState } from "@dnd/shared";
 import { executeTools, Master } from "./master";
 import { modelDefinition } from "./modelDefinition";
+import { toolDefinitions } from "./toolDefinitions";
 import type { ModelProvider, ModelResponse, StoryMessage, ToolDefinition } from "../model/types";
 import type {ActionStore} from "../types";
 
@@ -18,6 +19,9 @@ const state = GameStateSchema.parse({
 // rng = 0 rolls 1 on the die, 0.5 rolls 11, 0.999 rolls 20
 const fixed = (v: number) => () => v;
 
+// 1d4 with rng = 0.5 deals 3 damage
+const d4 = { diceCount: 1, diceSides: 4, bonus: 0 };
+
 test("empty list returns the same state and no records", () => {
   const r = executeTools([], state, fixed(0.5));
   assert.equal(r.state, state);
@@ -28,7 +32,7 @@ test("records follow the order of calls", () => {
   const r = executeTools(
     [
       { name: "roll_check", args: { characterId: "p1", skill: "stealth", dc: 10 } },
-      { name: "apply_damage", args: { targetId: "e1", amount: 3 } },
+      { name: "apply_damage", args: { targetId: "e1", ...d4 } },
     ],
     state,
     fixed(0.5),
@@ -38,13 +42,13 @@ test("records follow the order of calls", () => {
 
 test("record contains parsed args and the engine event", () => {
   const r = executeTools(
-    [{ name: "apply_damage", args: { targetId: "e1", amount: 3 } }],
+    [{ name: "apply_damage", args: { targetId: "e1", ...d4 } }],
     state,
     fixed(0.5),
   );
   const rec = r.records[0];
   assert.ok(rec.tool === "apply_damage");
-  assert.deepEqual(rec.args, { targetId: "e1", amount: 3 });
+  assert.deepEqual(rec.args, { targetId: "e1", ...d4 });
   assert.equal(rec.event.hpBefore, 7);
   assert.equal(rec.event.hpAfter, 4);
 });
@@ -65,8 +69,8 @@ test("rng is passed to the engine", () => {
 test("each call sees the state produced by the previous one", () => {
   const r = executeTools(
     [
-      { name: "apply_damage", args: { targetId: "e1", amount: 3 } },
-      { name: "apply_damage", args: { targetId: "e1", amount: 2 } },
+      { name: "apply_damage", args: { targetId: "e1", ...d4 } },
+      { name: "apply_damage", args: { targetId: "e1", ...d4 } },
     ],
     state,
     fixed(0.5),
@@ -74,13 +78,32 @@ test("each call sees the state produced by the previous one", () => {
   const second = r.records[1];
   assert.ok(second.tool === "apply_damage");
   assert.equal(second.event.hpBefore, 4);
-  assert.equal(second.event.hpAfter, 2);
-  assert.equal(r.state.enemies[0].hp, 2);
+  assert.equal(second.event.hpAfter, 1);
+  assert.equal(r.state.enemies[0].hp, 1);
+});
+
+test("rng is passed to the engine for damage", () => {
+  const r = executeTools(
+    [{ name: "apply_damage", args: { targetId: "e1", diceCount: 1, diceSides: 6, bonus: 0 } }],
+    state,
+    fixed(0),
+  );
+  const rec = r.records[0];
+  assert.ok(rec.tool === "apply_damage");
+  assert.deepEqual(rec.event.rolls, [1]);
+  assert.equal(rec.event.amount, 1);
+});
+
+test("damage tool schema shows the model the allowed dice", () => {
+  const definition = toolDefinitions.find((t) => t.name === "apply_damage");
+  assert.ok(definition);
+  const properties = definition.argsSchema.properties as Record<string, { enum?: number[] }>;
+  assert.deepEqual(properties.diceSides.enum, [4, 6, 8, 10, 12, 20]);
 });
 
 test("input state is not mutated", () => {
   executeTools(
-    [{ name: "apply_damage", args: { targetId: "e1", amount: 3 } }],
+    [{ name: "apply_damage", args: { targetId: "e1", ...d4 } }],
     state,
     fixed(0.5),
   );
@@ -118,7 +141,7 @@ test("engine error throws with the engine error text", () => {
   assert.throws(
     () =>
       executeTools(
-        [{ name: "apply_damage", args: { targetId: "ghost", amount: 1 } }],
+        [{ name: "apply_damage", args: { targetId: "ghost", ...d4 } }],
         state,
         fixed(0.5),
       ),
@@ -130,8 +153,8 @@ test("error in the middle of the list aborts the run and leaves the input intact
   assert.throws(() =>
     executeTools(
       [
-        { name: "apply_damage", args: { targetId: "e1", amount: 3 } },
-        { name: "apply_damage", args: { targetId: "ghost", amount: 1 } },
+        { name: "apply_damage", args: { targetId: "e1", ...d4 } },
+        { name: "apply_damage", args: { targetId: "ghost", ...d4 } },
       ],
       state,
       fixed(0.5),
@@ -204,9 +227,9 @@ function loopingModel() {
 }
 
 const say = (text: string): ModelResponse => ({ messageType: "model_text", text });
-const damage = (targetId: string, amount: number): ModelResponse => ({
+const damage = (targetId: string): ModelResponse => ({
   messageType: "tool_calls",
-  calls: [{ name: "apply_damage", args: { targetId, amount } }],
+  calls: [{ name: "apply_damage", args: { targetId, ...d4 } }],
 });
 
 test("handleMessage: plain text reply is returned and the action is committed", async () => {
@@ -262,7 +285,7 @@ test("handleMessage: system instruction contains the master role and the room st
 
 test("handleMessage: each round's system instruction shows the current draft", async () => {
   const { store } = fakeStore(state);
-  const { model, calls } = fakeModel([damage("e1", 3), say("ok")]);
+  const { model, calls } = fakeModel([damage("e1"), say("ok")]);
   await new Master(store, ROOM, model, fixed(0.5)).handleMessage("Бью гоблина");
 
   const first = stateFromInstruction(calls[0].systemInstruction) as GameState;
@@ -285,7 +308,7 @@ test("handleMessage: system instruction is not stored in history", async () => {
 
 test("handleMessage: tool calls are applied and the final state is committed", async () => {
   const { store, log } = fakeStore(state);
-  const { model } = fakeModel([damage("e1", 3), say("Гоблин ранен.")]);
+  const { model } = fakeModel([damage("e1"), say("Гоблин ранен.")]);
   const master = new Master(store, ROOM, model, fixed(0.5));
 
   const reply = await master.handleMessage("Бью гоблина");
@@ -298,7 +321,7 @@ test("handleMessage: tool calls are applied and the final state is committed", a
 
 test("handleMessage: model sees its tool calls and their results in the next round", async () => {
   const { store } = fakeStore(state);
-  const { model, calls } = fakeModel([damage("e1", 3), say("ok")]);
+  const { model, calls } = fakeModel([damage("e1"), say("ok")]);
   await new Master(store, ROOM, model, fixed(0.5)).handleMessage("Бью гоблина");
 
   assert.equal(calls.length, 2);
@@ -307,7 +330,7 @@ test("handleMessage: model sees its tool calls and their results in the next rou
     msgs.map((m) => m.messageType),
     ["player_text", "tool_calls", "tool_results"],
   );
-  assert.deepEqual(msgs[1], damage("e1", 3));
+  assert.deepEqual(msgs[1], damage("e1"));
   const results = msgs[2];
   assert.ok(results.messageType === "tool_results");
   assert.equal(results.records.length, 1);
@@ -319,13 +342,13 @@ test("handleMessage: model sees its tool calls and their results in the next rou
 
 test("handleMessage: several tool rounds share one draft", async () => {
   const { store, log } = fakeStore(state);
-  const { model, calls } = fakeModel([damage("e1", 3), damage("e1", 2), say("ok")]);
+  const { model, calls } = fakeModel([damage("e1"), damage("e1"), say("ok")]);
   await new Master(store, ROOM, model, fixed(0.5)).handleMessage("Бью дважды");
 
   assert.equal(calls.length, 3);
   assert.equal(log.started, 1);
   assert.equal(log.committed.length, 1);
-  assert.equal(log.committed[0].enemies[0].hp, 2);
+  assert.equal(log.committed[0].enemies[0].hp, 1);
 });
 
 test("handleMessage: rng from the constructor reaches the engine", async () => {
@@ -348,7 +371,7 @@ test("handleMessage: rng from the constructor reaches the engine", async () => {
 
 test("handleMessage: history persists between messages, including the model's reply", async () => {
   const { store } = fakeStore(state);
-  const { model, calls } = fakeModel([damage("e1", 3), say("Ранен."), say("Убегает.")]);
+  const { model, calls } = fakeModel([damage("e1"), say("Ранен."), say("Убегает.")]);
   const master = new Master(store, ROOM, model, fixed(0.5));
 
   await master.handleMessage("Бью");
@@ -365,7 +388,7 @@ test("handleMessage: history persists between messages, including the model's re
 
 test("handleMessage: engine error cancels the action and is rethrown", async () => {
   const { store, log } = fakeStore(state);
-  const { model } = fakeModel([damage("ghost", 1)]);
+  const { model } = fakeModel([damage("ghost")]);
   const master = new Master(store, ROOM, model, fixed(0.5));
 
   await assert.rejects(master.handleMessage("Бью призрака"), /ghost/);
@@ -387,8 +410,8 @@ test("handleMessage: failed action leaves no trace in history", async () => {
   const { store } = fakeStore(state);
   const { model, calls } = fakeModel([
     say("Добро пожаловать."),
-    damage("e1", 3),
-    damage("ghost", 1),
+    damage("e1"),
+    damage("ghost"),
     say("ok"),
   ]);
   const master = new Master(store, ROOM, model, fixed(0.5));

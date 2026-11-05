@@ -29,7 +29,9 @@ export type CheckEvent = {
 export type DamageEvent = {
   targetId: string
   targetName: string
-  amount: number    //model is responsible for it not the engine
+  amount: number
+  rolls: number[]
+  bonus: number
   hpBefore: number
   hpAfter: number
   isDefeated: boolean

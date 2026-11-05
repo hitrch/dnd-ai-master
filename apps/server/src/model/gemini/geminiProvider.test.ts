@@ -30,8 +30,8 @@ const checkRecord: GameRecord = {
 
 const damageRecord: GameRecord = {
   tool: "apply_damage",
-  args: { targetId: "e1", amount: 3 },
-  event: { targetId: "e1", targetName: "Гоблин-часовой", amount: 3, hpBefore: 7, hpAfter: 4, isDefeated: false },
+  args: { targetId: "e1", diceCount: 1, diceSides: 4, bonus: 0 },
+  event: { targetId: "e1", targetName: "Гоблин-часовой", amount: 3, rolls: [3], bonus: 0, hpBefore: 7, hpAfter: 4, isDefeated: false },
 };
 
 // Builds a real SDK response so the text / functionCalls getters work as in production
@@ -59,7 +59,7 @@ test("toContent: tool calls become one model content with a functionCall part pe
       messageType: "tool_calls",
       calls: [
         { name: "roll_check", args: { characterId: "p1", skill: "stealth", dc: 12 } },
-        { name: "apply_damage", args: { targetId: "e1", amount: 3 } },
+        { name: "apply_damage", args: { targetId: "e1", diceCount: 1, diceSides: 4, bonus: 0 } },
       ],
     },
   ]);
@@ -68,7 +68,7 @@ test("toContent: tool calls become one model content with a functionCall part pe
       role: "model",
       parts: [
         { functionCall: { name: "roll_check", args: { characterId: "p1", skill: "stealth", dc: 12 } } },
-        { functionCall: { name: "apply_damage", args: { targetId: "e1", amount: 3 } } },
+        { functionCall: { name: "apply_damage", args: { targetId: "e1", diceCount: 1, diceSides: 4, bonus: 0 } } },
       ],
     },
   ]);
@@ -92,7 +92,7 @@ test("toContent: tool results become one user content with a functionResponse pe
 test("toContent: order and count of messages are preserved", () => {
   const c = translateStoryMessagesToContent([
     { messageType: "player_text", text: "Бью" },
-    { messageType: "tool_calls", calls: [{ name: "apply_damage", args: { targetId: "e1", amount: 3 } }] },
+    { messageType: "tool_calls", calls: [{ name: "apply_damage", args: { targetId: "e1", diceCount: 1, diceSides: 4, bonus: 0 } }] },
     { messageType: "tool_results", records: [damageRecord] },
     { messageType: "model_text", text: "Ранен." },
   ]);
@@ -122,14 +122,14 @@ test("fromResponse: function calls become tool_calls in order", () => {
   const r = translateContentResponseToModelResponse(
     geminiResponse([
       { functionCall: { name: "roll_check", args: { characterId: "p1", skill: "stealth", dc: 12 } } },
-      { functionCall: { name: "apply_damage", args: { targetId: "e1", amount: 3 } } },
+      { functionCall: { name: "apply_damage", args: { targetId: "e1", diceCount: 1, diceSides: 4, bonus: 0 } } },
     ]),
   );
   assert.deepEqual(r, {
     messageType: "tool_calls",
     calls: [
       { name: "roll_check", args: { characterId: "p1", skill: "stealth", dc: 12 } },
-      { name: "apply_damage", args: { targetId: "e1", amount: 3 } },
+      { name: "apply_damage", args: { targetId: "e1", diceCount: 1, diceSides: 4, bonus: 0 } },
     ],
   });
 });
@@ -143,7 +143,7 @@ test("fromResponse: text together with calls gives tool_calls", () => {
   const r = translateContentResponseToModelResponse(
     geminiResponse([
       { text: "Посмотрим..." },
-      { functionCall: { name: "apply_damage", args: { targetId: "e1", amount: 3 } } },
+      { functionCall: { name: "apply_damage", args: { targetId: "e1", diceCount: 1, diceSides: 4, bonus: 0 } } },
     ]),
   );
   assert.equal(r.messageType, "tool_calls");
@@ -168,7 +168,7 @@ test("fromResponse: empty text throws", () => {
 });
 
 test("fromResponse: round trip of tool calls keeps names and args", () => {
-  const calls = [{ name: "apply_damage", args: { targetId: "e1", amount: 3 } }];
+  const calls = [{ name: "apply_damage", args: { targetId: "e1", diceCount: 1, diceSides: 4, bonus: 0 } }];
   const [content] = translateStoryMessagesToContent([{ messageType: "tool_calls", calls: [calls[0]] }]);
   const r = translateContentResponseToModelResponse(geminiResponse(content.parts));
   assert.deepEqual(r, { messageType: "tool_calls", calls });

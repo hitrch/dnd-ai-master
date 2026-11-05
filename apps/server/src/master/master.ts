@@ -25,7 +25,7 @@ export function executeTools(tools: ToolCall[], gameState: GameState, rng: Rng):
       }
       case "apply_damage": {
         const applyDamageArgs = ToolArgsSchemas.apply_damage.parse(call.args)
-        const applyDamageResult = applyDamage(draft, applyDamageArgs)
+        const applyDamageResult = applyDamage(draft, applyDamageArgs, rng)
         if(!applyDamageResult.isOk) throw new Error(applyDamageResult.errorText)
         draft = applyDamageResult.state
         gameRecords.push({tool: "apply_damage", args: applyDamageArgs, event: applyDamageResult.event})
