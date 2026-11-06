@@ -22,13 +22,21 @@ export function translateToolDefinitionsToTools(toolDefinitions: ToolDefinition[
   })
 }
 
+function parseRetryAfterMs(headers: Headers | undefined): number | undefined {
+  const retryAfterHeader = headers?.get("retry-after")
+  if(retryAfterHeader === null || retryAfterHeader === undefined) return undefined
+  const retryAfter = Number(retryAfterHeader)
+  return Number.isFinite(retryAfter) ? retryAfter * 1000 : undefined
+}
+
 export function translateToModelError(arg: unknown): ModelError {
   if(arg instanceof ModelError) return arg
   if(arg instanceof APIError) {
     // No status means the request never got an answer: a connection failure or a timeout
     // (APIConnectionError, APIConnectionTimeoutError), both transient
     const isRetryable = !arg.status || arg.status === 429 || arg.status >= 500
-    return new ModelError(arg.message, isRetryable, {cause: arg})
+    const retryAfterMs = parseRetryAfterMs(arg.headers)
+    return new ModelError(arg.message, isRetryable, {cause: arg, retryAfterMs})
   }
   const errorMessage = arg instanceof Error ? arg.message : String(arg)
   // Everything else: malformed model responses (broken JSON in tool arguments, no text and no calls).

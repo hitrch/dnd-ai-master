@@ -6,6 +6,7 @@ import {ModelError} from "./modelError";
 export interface RetryOptions {
   maxAttempts: number,
   baseDelayMs: number,
+  maxRetryAfterMs: number,
   sleep?: (ms: number) => Promise<void>
 }
 
@@ -31,7 +32,9 @@ export class RetryingModelProvider implements ModelProvider {
         if (attempt >= this._options.maxAttempts || !(error instanceof ModelError) || !error.isRetryable) {
           throw error
         }
-        await this._sleep(this._options.baseDelayMs * (2 ** (attempt - 1)))
+        if(error.retryAfterMs === undefined) await this._sleep(this._options.baseDelayMs * (2 ** (attempt - 1)))
+        else if(error.retryAfterMs <= this._options.maxRetryAfterMs) await this._sleep(error.retryAfterMs)
+        else throw error
       }
     }
   }

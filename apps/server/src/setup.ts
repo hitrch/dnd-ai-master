@@ -11,7 +11,8 @@ import type { ModelProvider } from "./model/types";
 // Gemini itself answers 504 after ~19 s, so a longer client timeout buys nothing.
 // Worst case per model call: 3 attempts x 15 s + 1 s + 2 s of pauses ~ 48 s
 const timeoutMs = 15_000;
-const retryOptions = { maxAttempts: 3, baseDelayMs: 1000 };
+// The tokens-per-minute window refills within a minute; a longer wait means another limit (e.g. daily), so fail instead
+const retryOptions = { maxAttempts: 3, baseDelayMs: 1000, maxRetryAfterMs: 60_000 };
 
 function requireEnv(name: string): string {
   const value = process.env[name];

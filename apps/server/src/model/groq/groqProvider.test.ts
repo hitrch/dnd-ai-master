@@ -135,6 +135,39 @@ test("toModelError: a connection failure is retryable", () => {
   assert.equal(e.isRetryable, true);
 });
 
+test("toModelError: the retry-after header in seconds becomes retryAfterMs", () => {
+  const cases: [string, number][] = [["12", 12_000], ["1.5", 1500], ["0", 0]];
+  for (const [header, expected] of cases) {
+    const headers = new Headers({ "retry-after": header });
+    const e = translateToModelError(APIError.generate(429, undefined, "rate limit", headers));
+    assert.equal(e.retryAfterMs, expected, `header ${header}`);
+  }
+});
+
+test("toModelError: retry-after is honoured on 5xx too", () => {
+  const headers = new Headers({ "retry-after": "3" });
+  const e = translateToModelError(APIError.generate(503, undefined, "unavailable", headers));
+  assert.equal(e.isRetryable, true);
+  assert.equal(e.retryAfterMs, 3000);
+});
+
+test("toModelError: no retry-after header means no retryAfterMs", () => {
+  const e = translateToModelError(APIError.generate(429, undefined, "rate limit", new Headers()));
+  assert.equal(e.retryAfterMs, undefined);
+});
+
+test("toModelError: an unreadable retry-after header is ignored", () => {
+  const headers = new Headers({ "retry-after": "soon" });
+  const e = translateToModelError(APIError.generate(429, undefined, "rate limit", headers));
+  assert.equal(e.isRetryable, true);
+  assert.equal(e.retryAfterMs, undefined);
+});
+
+test("toModelError: a connection error has no headers and no retryAfterMs", () => {
+  const e = translateToModelError(new APIConnectionError({ message: "fetch failed" }));
+  assert.equal(e.retryAfterMs, undefined);
+});
+
 test("toModelError: any other error is retryable and keeps its message", () => {
   const e = translateToModelError(new SyntaxError("Unexpected token"));
   assert.ok(e instanceof ModelError);
