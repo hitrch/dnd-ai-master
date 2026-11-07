@@ -7,9 +7,9 @@ const makeState = () =>
   GameStateSchema.parse({
     location: "Подножие башни",
     players: [
-      { id: "p1", name: "Арвен", hp: 12, maxHp: 12, skills: { stealth: 5, athletics: 1 } },
+      { id: "p1", name: "Арвен", hp: 12, maxHp: 12, armorClass: 14, weapons: [], skills: { stealth: 5, athletics: 1 } },
     ],
-    enemies: [{ id: "e1", name: "Гоблин-часовой", hp: 7, maxHp: 7 }],
+    enemies: [{ id: "e1", name: "Гоблин-часовой", hp: 7, maxHp: 7, armorClass: 15, weapons: [], skills: {} }],
   });
 
 test("created room can be read back with an equal state", async () => {

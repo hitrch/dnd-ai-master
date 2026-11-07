@@ -1,4 +1,4 @@
-import type {ApplyDamageArgs, RollCheckArgs} from "./tools";
+import type {ApplyDamageArgs, AttackArg, RollCheckArgs} from "./tools";
 import type {Skill} from "./skills";
 import type {GameState} from "./state";
 
@@ -12,6 +12,10 @@ export type ToolMap = {
     event: DamageEvent,
     args: ApplyDamageArgs
   },
+  attack: {
+    event: AttackEvent,
+    args: AttackArg
+  }
 }
 export type ToolName = keyof ToolMap
 
@@ -35,6 +39,22 @@ export type DamageEvent = {
   hpBefore: number
   hpAfter: number
   isDefeated: boolean
+}
+
+export type AttackEvent = {
+  attackerId: string
+  attackerName: string
+  targetId: string
+  targetName: string
+  weaponId: string
+  weaponName: string
+  targetArmorClass: number
+  roll: number
+  attackBonus: number
+  total: number
+  hasHit: boolean
+  isCritical: boolean
+  damage: DamageEvent | null
 }
 
 export type GameRecord = {

@@ -67,9 +67,25 @@ export function createSampleState(): GameState {
         name: "Арвен",
         hp: 12,
         maxHp: 12,
+        armorClass: 14,
+        weapons: [
+          { id: "dagger", name: "Кинжал", attackBonus: 5, damage: { diceCount: 1, diceSides: 4, bonus: 3 } },
+        ],
         skills: { stealth: 5, athletics: 1, persuasion: 2, perception: 3 },
       },
     ],
-    enemies: [{ id: "e1", name: "Гоблин-часовой", hp: 7, maxHp: 7 }],
+    enemies: [
+      {
+        id: "e1",
+        name: "Гоблин-часовой",
+        hp: 7,
+        maxHp: 7,
+        armorClass: 15,
+        weapons: [
+          { id: "scimitar", name: "Скимитар", attackBonus: 4, damage: { diceCount: 1, diceSides: 6, bonus: 2 } },
+        ],
+        skills: { stealth: 6 },
+      },
+    ],
   });
 }

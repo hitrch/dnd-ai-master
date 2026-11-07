@@ -11,9 +11,19 @@ import type {ActionStore} from "../types";
 const state = GameStateSchema.parse({
   location: "Подножие башни",
   players: [
-    { id: "p1", name: "Арвен", hp: 12, maxHp: 12, skills: { stealth: 5, athletics: 1 } },
+    {
+      id: "p1",
+      name: "Арвен",
+      hp: 12,
+      maxHp: 12,
+      armorClass: 14,
+      weapons: [
+        { id: "dagger", name: "Кинжал", attackBonus: 5, damage: { diceCount: 1, diceSides: 4, bonus: 3 } },
+      ],
+      skills: { stealth: 5, athletics: 1 },
+    },
   ],
-  enemies: [{ id: "e1", name: "Гоблин-часовой", hp: 7, maxHp: 7 }],
+  enemies: [{ id: "e1", name: "Гоблин-часовой", hp: 7, maxHp: 7, armorClass: 15, weapons: [], skills: {} }],
 });
 
 // rng = 0 rolls 1 on the die, 0.5 rolls 11, 0.999 rolls 20
@@ -51,6 +61,27 @@ test("record contains parsed args and the engine event", () => {
   assert.deepEqual(rec.args, { targetId: "e1", ...d4 });
   assert.equal(rec.event.hpBefore, 7);
   assert.equal(rec.event.hpAfter, 4);
+});
+
+test("attack call is executed by the engine and recorded", () => {
+  // d20 = 11, 11 + 5 = 16 vs AC 15; d4 = 3, 3 + 3 = 6
+  const args = { attackerId: "p1", weaponId: "dagger", targetId: "e1" };
+  const r = executeTools([{ name: "attack", args }], state, fixed(0.5));
+  const rec = r.records[0];
+  assert.ok(rec.tool === "attack");
+  assert.deepEqual(rec.args, args);
+  assert.equal(rec.event.hasHit, true);
+  assert.equal(rec.event.damage?.hpAfter, 1);
+  assert.equal(r.state.enemies[0].hp, 1);
+});
+
+test("attack with an invalid args shape throws", () => {
+  assert.throws(() => executeTools([{ name: "attack", args: { attackerId: "p1", targetId: "e1" } }], state, fixed(0.5)));
+});
+
+test("attack refused by the engine throws its error text", () => {
+  const args = { attackerId: "p1", weaponId: "scimitar", targetId: "e1" };
+  assert.throws(() => executeTools([{ name: "attack", args }], state, fixed(0.5)), /scimitar/);
 });
 
 test("rng is passed to the engine", () => {
@@ -254,7 +285,7 @@ test("handleMessage: model is offered every tool", async () => {
   await new Master(store, ROOM, model, fixed(0.5)).handleMessage("hi");
 
   const tools = calls[0].tools;
-  assert.deepEqual(tools.map((t) => t.name).sort(), ["apply_damage", "roll_check"]);
+  assert.deepEqual(tools.map((t) => t.name).sort(), ["apply_damage", "attack", "roll_check"]);
   for (const t of tools) {
     assert.ok(t.description.length > 0, `${t.name} has no description`);
     assert.equal(t.argsSchema.type, "object", `${t.name} args schema is not a JSON Schema object`);
