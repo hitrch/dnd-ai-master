@@ -21,6 +21,9 @@ const state = GameStateSchema.parse({
         { id: "dagger", name: "Кинжал", attackBonus: 5, damage: { diceCount: 1, diceSides: 4, bonus: 3 } },
       ],
       skills: { stealth: 5, athletics: 1 },
+      saveRollFails: 0,
+      saveRollSuccesses: 0,
+      isStabilizedAfterSave: false,
     },
   ],
   enemies: [{ id: "e1", name: "Гоблин-часовой", hp: 7, maxHp: 7, armorClass: 15, weapons: [], skills: {} }],
@@ -73,6 +76,28 @@ test("attack call is executed by the engine and recorded", () => {
   assert.equal(rec.event.hasHit, true);
   assert.equal(rec.event.damage?.hpAfter, 1);
   assert.equal(r.state.enemies[0].hp, 1);
+});
+
+test("death_save call is executed by the engine and recorded", () => {
+  // d20 = 11: a success
+  const down = { ...state, players: [{ ...state.players[0], hp: 0 }] };
+  const r = executeTools([{ name: "death_save", args: { characterId: "p1" } }], down, fixed(0.5));
+  const rec = r.records[0];
+  assert.ok(rec.tool === "death_save");
+  assert.deepEqual(rec.args, { characterId: "p1" });
+  assert.equal(rec.event.outcome, "success");
+  assert.equal(r.state.players[0].saveRollSuccesses, 1);
+});
+
+test("death_save refused by the engine throws", () => {
+  // the character is not down
+  assert.throws(() => executeTools([{ name: "death_save", args: { characterId: "p1" } }], state, fixed(0.5)));
+});
+
+test("death_save is described to the model", () => {
+  const definition = toolDefinitions.find((d) => d.name === "death_save");
+  assert.ok(definition);
+  assert.ok(definition.description.length > 0);
 });
 
 test("attack with an invalid args shape throws", () => {
@@ -285,7 +310,7 @@ test("handleMessage: model is offered every tool", async () => {
   await new Master(store, ROOM, model, fixed(0.5)).handleMessage("hi");
 
   const tools = calls[0].tools;
-  assert.deepEqual(tools.map((t) => t.name).sort(), ["apply_damage", "attack", "roll_check"]);
+  assert.deepEqual(tools.map((t) => t.name).sort(), ["apply_damage", "attack", "death_save", "roll_check"]);
   for (const t of tools) {
     assert.ok(t.description.length > 0, `${t.name} has no description`);
     assert.equal(t.argsSchema.type, "object", `${t.name} args schema is not a JSON Schema object`);

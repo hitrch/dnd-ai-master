@@ -2,7 +2,7 @@ import type {
   GameState,
   RollCheckArgs,
   ApplyDamageArgs,
-  ReturnResult, AttackArg, DamageEvent, Creature, AttackEvent,
+  ReturnResult, AttackArg, DamageEvent, Creature, AttackEvent, DeathSaveArgs, DeathOutcomeType,
 } from "@dnd/shared";
 
 // Random number generator in [0, 1). Math.random in the game, replaced in tests.
@@ -20,6 +20,13 @@ function setHpOfCreature<T extends Creature>(list: T[], creatureId: string, hp: 
   return list.map(c => {
     if (c.id !== creatureId) return c
     return {...c, hp}
+  })
+}
+
+function changeCreatureInList<T extends Creature>(list: T[], character: T): T[] {
+  return list.map(c => {
+    if (c.id !== character.id) return c
+    return character
   })
 }
 
@@ -56,7 +63,8 @@ function rollAndApplyDamage(state: GameState, target: Creature, diceCount: numbe
 
 export function rollCheck(state: GameState, args: RollCheckArgs, rng: Rng = Math.random): ReturnResult<"roll_check"> {
   const character = state.players.find((p) => p.id === args.characterId)
-  if (!character) return {isOk: false, errorText: `Unknown character: ${args.characterId}`}
+  if(!character) return {isOk: false, errorText: `Unknown character: ${args.characterId}`}
+  if(character.hp === 0) return {isOk: false, errorText: `Character is down: ${character.name}`}
 
   // a skill missing from the sheet is untrained: modifier 0
   const modifier = character.skills[args.skill] ?? 0
@@ -146,5 +154,76 @@ export function attack(state: GameState, args: AttackArg, rng: Rng = Math.random
       damage: damageEvent,
     },
     state: nextState
+  }
+}
+
+export function deathSave(state: GameState, args: DeathSaveArgs, rng: Rng = Math.random): ReturnResult<"death_save"> {
+  const character = state.players.find((p) => p.id === args.characterId)
+  if(!character) return {isOk: false, errorText: `Unknown character: ${args.characterId}`}
+  if(character.hp > 0) return {isOk: false, errorText: `Character ${character.name} has HP`}
+  if(character.saveRollFails === 3) return {isOk: false, errorText: `Character is dead: ${character.name}`}
+  if(character.isStabilizedAfterSave) return {isOk: false, errorText: `Character ${character.name} is stabilized`}
+
+  const roll = rollD(rng, 20)
+  let currentSuccesses = character.saveRollSuccesses
+  let currentFailures = character.saveRollFails
+  let outcome: DeathOutcomeType
+  let isStabilizedAfterSave = false
+  let hp = 0
+
+  if(roll === 20) {
+    hp = 1
+    outcome = "revived"
+    currentSuccesses = 0
+    currentFailures = 0
+  } else if(roll === 1) {
+    currentFailures = Math.min(3, currentFailures + 2)
+    outcome = "failure"
+  } else if(roll >= 10) {
+    currentSuccesses += 1
+    outcome = "success"
+  } else {
+    currentFailures += 1
+    outcome = "failure"
+  }
+
+  if(currentSuccesses === 3) {
+    outcome = "stable"
+    isStabilizedAfterSave = true
+    currentSuccesses = 0
+    currentFailures = 0
+  }
+
+  if(currentFailures === 3) {
+    outcome = "dead"
+  }
+
+  const event = {
+    characterId: character.id,
+    characterName: character.name,
+    roll,
+    successes: currentSuccesses,
+    failures: currentFailures,
+    outcome,
+  }
+
+  const players = changeCreatureInList(
+    state.players,
+    {
+      ...character,
+      saveRollFails: currentFailures,
+      saveRollSuccesses: currentSuccesses,
+      isStabilizedAfterSave,
+      hp
+    }
+  )
+
+  return {
+    isOk: true,
+    event,
+    state: {
+      ...state,
+      players
+    }
   }
 }

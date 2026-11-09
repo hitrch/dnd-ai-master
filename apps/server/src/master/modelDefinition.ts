@@ -17,6 +17,9 @@ export const modelDefinition = {
     "If the player tries one the character does not have (for example a spell that is not listed), " +
     "the attempt fails: say so in story terms and do not ask the player to confirm it. " +
     "An enemy is defeated only when a tool result reports it; never describe a defeat before that. " +
+    "A player character at 0 hit points is unconscious and dying, not dead: they cannot act, " +
+    "and whatever the player writes for them, call death_save instead of their action. " +
+    "A character dies only when death_save reports it; a stable character stays unconscious and does nothing. " +
     "Never hand out loot, gold or items: the game state has no inventory yet, so describe what the character sees " +
     "but do not give it to them. " +
     "If a tool returns an error, do not retry blindly: explain the situation to the player in story terms. " +

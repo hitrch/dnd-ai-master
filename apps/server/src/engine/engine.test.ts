@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { GameStateSchema, ToolArgsSchemas } from "@dnd/shared";
 import type { GameState } from "@dnd/shared";
-import { rollCheck, applyDamage, attack } from "./engine";
+import { rollCheck, applyDamage, attack, deathSave } from "./engine";
 
 const state = GameStateSchema.parse({
   location: "Подножие башни",
@@ -17,6 +17,9 @@ const state = GameStateSchema.parse({
         { id: "dagger", name: "Кинжал", attackBonus: 5, damage: { diceCount: 1, diceSides: 4, bonus: 3 } },
       ],
       skills: { stealth: 5, athletics: 1 },
+      saveRollFails: 0,
+      saveRollSuccesses: 0,
+      isStabilizedAfterSave: false,
     },
   ],
   enemies: [
@@ -66,6 +69,14 @@ test("check does not change state: returns the same object", () => {
 
 test("unknown character returns an error", () => {
   const r = rollCheck(state, { characterId: "nobody", skill: "stealth", dc: 10 });
+  assert.equal(r.isOk, false);
+});
+
+test("check by a character at 0 HP returns an error and rolls nothing", () => {
+  const down = { ...state, players: [{ ...state.players[0], hp: 0 }] };
+  const r = rollCheck(down, { characterId: "p1", skill: "stealth", dc: 10 }, () => {
+    throw new Error("rng must not be called");
+  });
   assert.equal(r.isOk, false);
 });
 
@@ -306,6 +317,159 @@ test("attack: refusals return an error and roll nothing", () => {
     // an empty sequence fails on any rng call
     const { rng } = sequence();
     const r = attack(caseState, args, rng);
+    assert.equal(r.isOk, false, name);
+    assert.ok(!r.isOk && r.errorText.length > 0, name);
+  }
+});
+
+// ---------- death saving throws ----------
+// d20: 0 rolls 1, 0.05 rolls 2, 0.4 rolls 9, 0.45 rolls 10, 0.5 rolls 11, 0.999 rolls 20
+
+type Player = GameState["players"][number];
+
+// The sample state with the player down at 0 HP and some fields replaced
+function withDownPlayer(patch: Partial<Player> = {}): GameState {
+  return { ...state, players: [{ ...state.players[0], hp: 0, ...patch }] };
+}
+
+const saveP1 = { characterId: "p1" };
+
+test("death save: 10 is a success and fills the event", () => {
+  const { rng, calls } = sequence(0.45);
+  const r = deathSave(withDownPlayer(), saveP1, rng);
+  assert.ok(r.isOk);
+  assert.deepEqual(r.event, {
+    characterId: "p1",
+    characterName: "Арвен",
+    roll: 10,
+    successes: 1,
+    failures: 0,
+    outcome: "success",
+  });
+  assert.equal(r.state.players[0].saveRollSuccesses, 1);
+  assert.equal(r.state.players[0].saveRollFails, 0);
+  assert.equal(r.state.players[0].hp, 0);
+  assert.equal(calls(), 1);
+});
+
+test("death save: 9 is a failure", () => {
+  const r = deathSave(withDownPlayer(), saveP1, fixed(0.4));
+  assert.ok(r.isOk);
+  assert.equal(r.event.roll, 9);
+  assert.equal(r.event.outcome, "failure");
+  assert.equal(r.event.failures, 1);
+  assert.equal(r.event.successes, 0);
+  assert.equal(r.state.players[0].saveRollFails, 1);
+});
+
+test("death save: 2 is a single failure", () => {
+  const r = deathSave(withDownPlayer(), saveP1, fixed(0.05));
+  assert.ok(r.isOk);
+  assert.equal(r.event.roll, 2);
+  assert.equal(r.event.failures, 1);
+});
+
+test("death save: natural 1 counts as two failures", () => {
+  const r = deathSave(withDownPlayer(), saveP1, fixed(0));
+  assert.ok(r.isOk);
+  assert.equal(r.event.roll, 1);
+  assert.equal(r.event.outcome, "failure");
+  assert.equal(r.event.failures, 2);
+  assert.equal(r.state.players[0].saveRollFails, 2);
+});
+
+test("death save: third failure is death and keeps the counters", () => {
+  const r = deathSave(withDownPlayer({ saveRollFails: 2, saveRollSuccesses: 1 }), saveP1, fixed(0.4));
+  assert.ok(r.isOk);
+  assert.equal(r.event.outcome, "dead");
+  assert.equal(r.event.failures, 3);
+  assert.equal(r.event.successes, 1);
+  assert.equal(r.state.players[0].saveRollFails, 3);
+  assert.equal(r.state.players[0].isStabilizedAfterSave, false);
+});
+
+test("death save: natural 1 with two failures is death, failures do not go above 3", () => {
+  const r = deathSave(withDownPlayer({ saveRollFails: 2 }), saveP1, fixed(0));
+  assert.ok(r.isOk);
+  assert.equal(r.event.outcome, "dead");
+  assert.equal(r.event.failures, 3);
+  assert.equal(r.state.players[0].saveRollFails, 3);
+});
+
+test("death save: a dead character cannot roll again", () => {
+  const dead = deathSave(withDownPlayer({ saveRollFails: 2 }), saveP1, fixed(0));
+  assert.ok(dead.isOk);
+  const { rng } = sequence();
+  const r = deathSave(dead.state, saveP1, rng);
+  assert.equal(r.isOk, false);
+});
+
+test("death save: third success makes the character stable and resets the counters", () => {
+  const r = deathSave(withDownPlayer({ saveRollSuccesses: 2, saveRollFails: 2 }), saveP1, fixed(0.5));
+  assert.ok(r.isOk);
+  assert.equal(r.event.outcome, "stable");
+  assert.equal(r.event.successes, 0);
+  assert.equal(r.event.failures, 0);
+  const player = r.state.players[0];
+  assert.equal(player.isStabilizedAfterSave, true);
+  assert.equal(player.saveRollSuccesses, 0);
+  assert.equal(player.saveRollFails, 0);
+  assert.equal(player.hp, 0);
+});
+
+test("death save: a stable character cannot roll again", () => {
+  const stable = deathSave(withDownPlayer({ saveRollSuccesses: 2 }), saveP1, fixed(0.5));
+  assert.ok(stable.isOk);
+  const { rng } = sequence();
+  const r = deathSave(stable.state, saveP1, rng);
+  assert.equal(r.isOk, false);
+});
+
+test("death save: natural 20 revives with 1 HP and resets the counters", () => {
+  const r = deathSave(withDownPlayer({ saveRollSuccesses: 2, saveRollFails: 2 }), saveP1, fixed(0.999));
+  assert.ok(r.isOk);
+  assert.equal(r.event.roll, 20);
+  assert.equal(r.event.outcome, "revived");
+  assert.equal(r.event.successes, 0);
+  assert.equal(r.event.failures, 0);
+  const player = r.state.players[0];
+  assert.equal(player.hp, 1);
+  assert.equal(player.saveRollSuccesses, 0);
+  assert.equal(player.saveRollFails, 0);
+  assert.equal(player.isStabilizedAfterSave, false);
+});
+
+test("death save: replaces the character in place and keeps the others", () => {
+  const other: Player = { ...state.players[0], id: "p2", name: "Борин" };
+  const twoPlayers: GameState = { ...state, players: [{ ...state.players[0], hp: 0 }, other] };
+  const r = deathSave(twoPlayers, saveP1, fixed(0.5));
+  assert.ok(r.isOk);
+  assert.equal(r.state.players.length, 2);
+  assert.deepEqual(r.state.players.map((p) => p.id), ["p1", "p2"]);
+  assert.equal(r.state.players[0].saveRollSuccesses, 1);
+  assert.equal(r.state.players[1], other);
+  assert.equal(r.state.enemies, twoPlayers.enemies);
+});
+
+test("death save: does not mutate the original state", () => {
+  const down = withDownPlayer();
+  const r = deathSave(down, saveP1, fixed(0.5));
+  assert.ok(r.isOk);
+  assert.equal(down.players[0].saveRollSuccesses, 0);
+  assert.equal(down.players[0].hp, 0);
+});
+
+test("death save: refusals return an error and roll nothing", () => {
+  const cases: Array<[string, GameState, { characterId: string }]> = [
+    ["unknown character", withDownPlayer(), { characterId: "nobody" }],
+    ["character with HP", state, saveP1],
+    ["dead character", withDownPlayer({ saveRollFails: 3 }), saveP1],
+    ["stable character", withDownPlayer({ isStabilizedAfterSave: true }), saveP1],
+    ["enemy is not a character", withGoblin({ hp: 0 }), { characterId: "e1" }],
+  ];
+  for (const [name, caseState, args] of cases) {
+    const { rng } = sequence();
+    const r = deathSave(caseState, args, rng);
     assert.equal(r.isOk, false, name);
     assert.ok(!r.isOk && r.errorText.length > 0, name);
   }

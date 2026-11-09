@@ -1,5 +1,5 @@
 import type { ModelProvider, StoryMessage, ToolCall} from "../model/types"
-import {applyDamage, attack, rollCheck} from "../engine/engine"
+import {applyDamage, attack, deathSave, rollCheck} from "../engine/engine"
 import type {Rng} from "../engine/engine"
 import {ToolArgsSchemas} from "@dnd/shared"
 import type {GameState, GameRecord} from "@dnd/shared"
@@ -37,6 +37,14 @@ export function executeTools(tools: ToolCall[], gameState: GameState, rng: Rng):
         if(!attackResult.isOk) throw new Error(attackResult.errorText)
         draft = attackResult.state
         gameRecords.push({tool: "attack", args: attackArgs, event: attackResult.event})
+        break
+      }
+      case "death_save": {
+        const deathSaveArgs = ToolArgsSchemas.death_save.parse(call.args)
+        const deathSaveResult = deathSave(draft, deathSaveArgs, rng)
+        if(!deathSaveResult.isOk) throw new Error(deathSaveResult.errorText)
+        draft = deathSaveResult.state
+        gameRecords.push({tool: "death_save", args: deathSaveArgs, event: deathSaveResult.event})
         break
       }
       default: {

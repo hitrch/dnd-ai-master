@@ -27,6 +27,9 @@ export type Creature = z.infer<typeof CreatureSchema>
 
 export const CharacterSchema = z.object({
   ...CreatureSchema.shape,
+  saveRollFails: z.number().int().min(0).max(3),
+  saveRollSuccesses: z.number().int().min(0).max(3),
+  isStabilizedAfterSave: z.boolean(),
 })
 export type Character = z.infer<typeof CharacterSchema>
 

@@ -1,4 +1,4 @@
-import type {ApplyDamageArgs, AttackArg, RollCheckArgs} from "./tools";
+import type {ApplyDamageArgs, AttackArg, DeathSaveArgs, RollCheckArgs} from "./tools";
 import type {Skill} from "./skills";
 import type {GameState} from "./state";
 
@@ -16,8 +16,23 @@ export type ToolMap = {
     event: AttackEvent,
     args: AttackArg
   }
+  death_save: {
+    event: DeathSaveEvent,
+    args: DeathSaveArgs
+  }
 }
 export type ToolName = keyof ToolMap
+
+export type DeathOutcomeType = "success" | "failure" | "stable" | "dead" | "revived"
+
+export type DeathSaveEvent = {
+  characterId: string
+  characterName: string
+  roll: number
+  successes: number
+  failures: number
+  outcome: DeathOutcomeType
+}
 
 export type CheckEvent = {
   characterId: string

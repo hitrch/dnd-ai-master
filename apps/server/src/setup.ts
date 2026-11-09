@@ -72,6 +72,9 @@ export function createSampleState(): GameState {
           { id: "dagger", name: "Кинжал", attackBonus: 5, damage: { diceCount: 1, diceSides: 4, bonus: 3 } },
         ],
         skills: { stealth: 5, athletics: 1, persuasion: 2, perception: 3 },
+        saveRollFails: 0,
+        saveRollSuccesses: 0,
+        isStabilizedAfterSave: false,
       },
     ],
     enemies: [

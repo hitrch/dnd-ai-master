@@ -34,6 +34,18 @@ export const ToolDescriptions = {
     "The engine rolls the dice and calculates the damage; never pick a total yourself and never use numbers from the player. " +
     "The result contains each roll, the bonus, the total amount, hit points before and after and whether the target is defeated (0 HP). " +
     "If the target is defeated, describe it leaving the fight.",
+  death_save:
+    "Rolls a death saving throw for a player character at 0 hit points: a plain d20 with no modifiers. " +
+    "Call it once each time the dying character would act, instead of any action of theirs: " +
+    "a character at 0 hit points cannot move, talk, attack or make checks. " +
+    "Do not call it for a character who is stable or dead; the engine refuses it. " +
+    "Use the character id from the game state. " +
+    "10 or higher is a success, below 10 is a failure, a natural 1 counts as two failures. " +
+    "Three successes make the character stable: still unconscious at 0 hit points, but no longer dying. " +
+    "Three failures mean the character dies. A natural 20 brings the character back to consciousness with 1 hit point. " +
+    "The result contains the roll, the successes and failures after the roll and the outcome: " +
+    "success, failure, stable, dead or revived. " +
+    "Narrate the struggle between life and death according to the outcome; never decide it yourself.",
 } satisfies Record<ToolName, string>
 
 export const toolDefinitions: ToolDefinition[] = Object.keys(ToolArgsSchemas).map(tool => {

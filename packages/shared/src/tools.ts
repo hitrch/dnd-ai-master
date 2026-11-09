@@ -24,8 +24,14 @@ export const AttackArgsSchema = z.object({
 })
 export type AttackArg = z.infer<typeof AttackArgsSchema>
 
+export const DeathSaveArgsSchema = z.object({
+  characterId: z.string(),
+})
+export type DeathSaveArgs = z.infer<typeof DeathSaveArgsSchema>
+
 export const ToolArgsSchemas = {
   roll_check: RollCheckArgsSchema,
   apply_damage: ApplyDamageArgsSchema,
   attack: AttackArgsSchema,
+  death_save: DeathSaveArgsSchema,
 } satisfies Record<ToolName, z.ZodType>
