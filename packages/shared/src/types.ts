@@ -45,6 +45,8 @@ export type CheckEvent = {
   success: boolean
 }
 
+export type DamageOutcome = "dead" | "down" | "alive"
+
 export type DamageEvent = {
   targetId: string
   targetName: string
@@ -53,7 +55,7 @@ export type DamageEvent = {
   bonus: number
   hpBefore: number
   hpAfter: number
-  isDefeated: boolean
+  outcome: DamageOutcome
 }
 
 export type AttackEvent = {

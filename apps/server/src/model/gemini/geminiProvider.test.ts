@@ -31,7 +31,7 @@ const checkRecord: GameRecord = {
 const damageRecord: GameRecord = {
   tool: "apply_damage",
   args: { targetId: "e1", diceCount: 1, diceSides: 4, bonus: 0 },
-  event: { targetId: "e1", targetName: "Гоблин-часовой", amount: 3, rolls: [3], bonus: 0, hpBefore: 7, hpAfter: 4, isDefeated: false },
+  event: { targetId: "e1", targetName: "Гоблин-часовой", amount: 3, rolls: [3], bonus: 0, hpBefore: 7, hpAfter: 4, outcome: "alive" },
 };
 
 // Builds a real SDK response so the text / functionCalls getters work as in production

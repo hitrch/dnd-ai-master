@@ -1,9 +1,10 @@
-import type {
+import {
   GameState,
   RollCheckArgs,
   ApplyDamageArgs,
-  ReturnResult, AttackArg, DamageEvent, Creature, AttackEvent, DeathSaveArgs, DeathOutcomeType,
-} from "@dnd/shared";
+  ReturnResult, AttackArg, DamageEvent, Creature, AttackEvent, DeathSaveArgs, DeathOutcomeType, Character,
+  DamageOutcome, Enemy,
+} from "@dnd/shared"
 
 // Random number generator in [0, 1). Math.random in the game, replaced in tests.
 export type Rng = () => number
@@ -16,48 +17,92 @@ export function rollD(rng: Rng = Math.random, sides: number): number {
   return Math.floor(rng() * sides) + 1
 }
 
-function setHpOfCreature<T extends Creature>(list: T[], creatureId: string, hp: number): T[] {
+function changeCreatureInList<T extends Creature>(list: T[], creature: T): T[] {
   return list.map(c => {
-    if (c.id !== creatureId) return c
-    return {...c, hp}
+    if (c.id !== creature.id) return c
+    return creature
   })
 }
 
-function changeCreatureInList<T extends Creature>(list: T[], character: T): T[] {
-  return list.map(c => {
-    if (c.id !== character.id) return c
-    return character
-  })
+function isPlayerDead(player: Character): boolean {
+  return player.saveRollFails === 3
 }
 
-function rollAndApplyDamage(state: GameState, target: Creature, diceCount: number, diceSides: number, bonus: number, rng: Rng): RollAndApplyDamageResult {
+function getDamageTargetError(target: Character | Enemy): string | null {
+  if("saveRollFails" in target) {
+    if(isPlayerDead(target)) return `${target.name} is already dead`
+  } else {
+    if(target.hp === 0) return `${target.name} is already dead`
+  }
+
+  return null
+}
+
+function rollAndApplyDamage(
+  state: GameState, target: Creature, diceCount: number, diceSides: number,
+  bonus: number, isCritical: boolean, rng: Rng
+): RollAndApplyDamageResult {
+  let players, enemies
   const hpBefore = target.hp
   let amount = bonus
   const rolls: number[] = []
+  const diceCountConsideringCrit = isCritical ? diceCount * 2 : diceCount
 
-  for(let i = 0; i < diceCount; i++) {
+  for(let i = 0; i < diceCountConsideringCrit; i++) {
     const roll = rollD(rng, diceSides)
     rolls.push(roll)
     amount += roll
   }
 
   const hpAfter = Math.max(0, target.hp - amount)
+  const event: Omit<DamageEvent, "outcome"> = {
+    targetId: target.id,
+    targetName: target.name,
+    amount,
+    rolls,
+    bonus,
+    hpBefore,
+    hpAfter,
+  }
+  let outcome: DamageOutcome
+
+  const player = state.players.find(player => player.id === target.id)
+  if(player) {  // logic for player
+    let newPlayerState: Character
+    const isInstantDeath = player.maxHp + player.hp <= amount
+    // logic for downed player
+    if(player.hp === 0) {
+      const saveRollFailsChange = isCritical ? 2 : 1
+      const saveRollFails = isInstantDeath ? 3 :
+        Math.min(3, player.saveRollFails + saveRollFailsChange)
+      newPlayerState = {...player, saveRollFails, isStabilizedAfterSave: false}
+      outcome = isPlayerDead(newPlayerState) ? "dead" : "down"
+    } else {
+      if(isInstantDeath) {
+        outcome = "dead"
+        newPlayerState = {...player, hp: hpAfter, saveRollFails: 3}
+      } else {
+        outcome = hpAfter > 0 ? "alive" : "down"
+        newPlayerState = {...player, hp: hpAfter, saveRollSuccesses: 0, saveRollFails: 0, isStabilizedAfterSave: false}
+      }
+    }
+
+    players = changeCreatureInList(state.players, newPlayerState)
+    enemies = state.enemies
+  } else {  // logic for enemies
+    players = state.players
+    const enemy = state.enemies.find(enemy => enemy.id === target.id)
+    if(!enemy) throw new Error(`There is no enemy with id ${target.id}`)
+    outcome = hpAfter > 0 ? "alive" : "dead"
+    enemies = changeCreatureInList(state.enemies, {...enemy, hp: hpAfter})
+  }
   return {
     state: {
       ...state,
-      players: setHpOfCreature(state.players, target.id, hpAfter),
-      enemies: setHpOfCreature(state.enemies, target.id, hpAfter),
+      players,
+      enemies,
     },
-    event: {
-      targetId: target.id,
-      targetName: target.name,
-      amount,
-      rolls,
-      bonus,
-      hpBefore,
-      hpAfter,
-      isDefeated: hpAfter === 0,
-    }
+    event: {...event, outcome}
   }
 }
 
@@ -86,6 +131,10 @@ export function rollCheck(state: GameState, args: RollCheckArgs, rng: Rng = Math
   }
 }
 
+/**
+ * Damage without an attack roll: traps, falls, environmental hazards.
+ * Always hits, never crits. Dice and bonus come from the model, limited by the args schema.
+ */
 export function applyDamage(state: GameState, args: ApplyDamageArgs, rng: Rng = Math.random): ReturnResult<"apply_damage"> {
   const {targetId, diceCount, diceSides, bonus} = args
   const target =
@@ -93,7 +142,10 @@ export function applyDamage(state: GameState, args: ApplyDamageArgs, rng: Rng = 
     ?? state.enemies.find((e) => e.id === targetId)
   if (!target) return {isOk: false, errorText: `Unknown target: ${targetId}`}
 
-  const result = rollAndApplyDamage(state, target, diceCount, diceSides, bonus, rng)
+  const targetError = getDamageTargetError(target)
+  if(targetError) return {isOk: false, errorText: targetError}
+
+  const result = rollAndApplyDamage(state, target, diceCount, diceSides, bonus, false, rng)
   return {
     isOk: true,
     event: result.event,
@@ -101,6 +153,11 @@ export function applyDamage(state: GameState, args: ApplyDamageArgs, rng: Rng = 
   }
 }
 
+/**
+ * Weapon attack: d20 + weapon attack bonus against target AC, then weapon damage on hit.
+ * Natural 20 is a critical hit (dice count doubled), natural 1 always misses.
+ * The model only picks attacker, weapon and target; all numbers come from the state.
+ */
 export function attack(state: GameState, args: AttackArg, rng: Rng = Math.random): ReturnResult<"attack"> {
   const attacker =
     state.players.find((p) => p.id === args.attackerId)
@@ -112,10 +169,12 @@ export function attack(state: GameState, args: AttackArg, rng: Rng = Math.random
     ?? state.enemies.find((e) => e.id === args.targetId)
   if(!target) return {isOk: false, errorText: `Unknown target with id: ${args.targetId}`}
 
+  const targetError = getDamageTargetError(target)
+  if(targetError) return {isOk: false, errorText: targetError}
+
   const weapon = attacker.weapons.find(w => w.id === args.weaponId)
   if(!weapon) return {isOk: false, errorText: `Unknown weapon with id: ${args.weaponId}`}
   if(attacker.hp === 0) return {isOk: false, errorText: `Attacker is down: ${attacker.name}`}
-  if(target.hp === 0) return {isOk: false, errorText: `Target is down: ${target.name}`}
 
   const roll = rollD(rng, 20)
   let damageEvent: DamageEvent | null, nextState: GameState
@@ -138,8 +197,7 @@ export function attack(state: GameState, args: AttackArg, rng: Rng = Math.random
   }
 
   if(hasHit) {
-    const diceCount = isCritical ? 2 * weapon.damage.diceCount : weapon.damage.diceCount
-    const damageResult = rollAndApplyDamage(state, target, diceCount, weapon.damage.diceSides, weapon.damage.bonus, rng)
+    const damageResult = rollAndApplyDamage(state, target, weapon.damage.diceCount, weapon.damage.diceSides, weapon.damage.bonus, isCritical, rng)
     nextState = damageResult.state
     damageEvent = damageResult.event
   } else {
@@ -161,7 +219,7 @@ export function deathSave(state: GameState, args: DeathSaveArgs, rng: Rng = Math
   const character = state.players.find((p) => p.id === args.characterId)
   if(!character) return {isOk: false, errorText: `Unknown character: ${args.characterId}`}
   if(character.hp > 0) return {isOk: false, errorText: `Character ${character.name} has HP`}
-  if(character.saveRollFails === 3) return {isOk: false, errorText: `Character is dead: ${character.name}`}
+  if(isPlayerDead(character)) return {isOk: false, errorText: `Character is dead: ${character.name}`}
   if(character.isStabilizedAfterSave) return {isOk: false, errorText: `Character ${character.name} is stabilized`}
 
   const roll = rollD(rng, 20)

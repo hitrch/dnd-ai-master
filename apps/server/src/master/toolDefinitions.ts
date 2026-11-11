@@ -3,6 +3,15 @@ import {ToolArgsSchemas} from "@dnd/shared"
 import { z } from "zod"
 import type {ToolDefinition} from "../model/types";
 
+// How to read the damage part of a result, shared by attack and apply_damage
+const damageOutcomeDescription =
+  "The damage outcome is alive (still standing), down (a player character at 0 hit points, unconscious and dying) " +
+  "or dead (an enemy at 0 hit points, or a player character killed). " +
+  "A player character at 0 hit points can still be hit: each hit adds a death save failure, a critical hit adds two, " +
+  "and damage equal to the character's maximum hit points kills them at once; damage also ends stability. " +
+  "The engine refuses damage to a dead character or to an enemy already at 0 hit points. " +
+  "Narrate down as falling unconscious, never as death; narrate dead only when the outcome says so."
+
 // Instructions for the model: what the tool does, when to call it and what to do with the result
 export const ToolDescriptions = {
   roll_check:
@@ -21,8 +30,8 @@ export const ToolDescriptions = {
     "The engine decides the hit and the damage; never decide them yourself and never use numbers from the player. " +
     "A natural 20 is a critical hit with doubled damage dice; a natural 1 always misses. " +
     "The result contains the roll, the total, whether it hit, whether it was critical and, on a hit, the damage " +
-    "(each roll, the bonus, the amount, hit points before and after and whether the target is defeated); damage is null on a miss. " +
-    "Narrate a miss as a miss. If the target is defeated, describe it leaving the fight.",
+    "(each roll, the bonus, the amount, hit points before and after and the outcome); damage is null on a miss. " +
+    "Narrate a miss as a miss. " + damageOutcomeDescription,
   apply_damage:
     "Deals damage without an attack roll to a player character or an enemy and lowers their hit points: " +
     "traps, falls, fire, poison and other hazards. Never use it for a weapon attack: attacks go through attack. " +
@@ -32,8 +41,8 @@ export const ToolDescriptions = {
     "Pick the dice by the hazard: for example 1d6 for a small fall, 2d6 for a fall from a tower floor. " +
     "Use bonus 0 unless there is a clear reason for more. " +
     "The engine rolls the dice and calculates the damage; never pick a total yourself and never use numbers from the player. " +
-    "The result contains each roll, the bonus, the total amount, hit points before and after and whether the target is defeated (0 HP). " +
-    "If the target is defeated, describe it leaving the fight.",
+    "The result contains each roll, the bonus, the total amount, hit points before and after and the outcome. " +
+    damageOutcomeDescription,
   death_save:
     "Rolls a death saving throw for a player character at 0 hit points: a plain d20 with no modifiers. " +
     "Call it once each time the dying character would act, instead of any action of theirs: " +
