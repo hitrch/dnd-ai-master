@@ -1,4 +1,4 @@
-import type {GameRecord, GameState} from "@dnd/shared"
+import type { GameRecord, GameState } from "@dnd/shared"
 
 export interface ActionStore {
   startAction: (roomId: string) => Promise<GameState>

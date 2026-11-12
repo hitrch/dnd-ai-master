@@ -1,50 +1,53 @@
-import type { ModelProvider, StoryMessage, ToolCall} from "../model/types"
-import {applyDamage, attack, deathSave, rollCheck} from "../engine/engine"
-import type {Rng} from "../engine/engine"
-import {ToolArgsSchemas} from "@dnd/shared"
-import type {GameState, GameRecord} from "@dnd/shared"
-import {isTool} from "../utils";
-import {toolDefinitions} from "./toolDefinitions";
-import {modelDefinition} from "./modelDefinition";
-import type {ActionStore, ToolRunResult} from "../types";
-
+import type { ModelProvider, StoryMessage, ToolCall } from "../model/types"
+import { applyDamage, attack, deathSave, rollCheck } from "../engine/engine"
+import type { Rng } from "../engine/engine"
+import { ToolArgsSchemas } from "@dnd/shared"
+import type { GameState, GameRecord } from "@dnd/shared"
+import { isTool } from "../utils"
+import { toolDefinitions } from "./toolDefinitions"
+import { modelDefinition } from "./modelDefinition"
+import type { ActionStore, ToolRunResult } from "../types"
 
 export function executeTools(tools: ToolCall[], gameState: GameState, rng: Rng): ToolRunResult {
   const gameRecords: GameRecord[] = []
   let draft = gameState
-  for(const call of tools) {
-    if(!isTool(call.name)) throw new Error(`Unknown tool: ${call.name}`)
+  for (const call of tools) {
+    if (!isTool(call.name)) throw new Error(`Unknown tool: ${call.name}`)
     switch (call.name) {
       case "roll_check": {
         const rollCheckArgs = ToolArgsSchemas.roll_check.parse(call.args)
         const rollCheckResult = rollCheck(draft, rollCheckArgs, rng)
-        if(!rollCheckResult.isOk) throw new Error(rollCheckResult.errorText)
+        if (!rollCheckResult.isOk) throw new Error(rollCheckResult.errorText)
         draft = rollCheckResult.state
-        gameRecords.push({tool: "roll_check", args: rollCheckArgs, event: rollCheckResult.event})
+        gameRecords.push({ tool: "roll_check", args: rollCheckArgs, event: rollCheckResult.event })
         break
       }
       case "apply_damage": {
         const applyDamageArgs = ToolArgsSchemas.apply_damage.parse(call.args)
         const applyDamageResult = applyDamage(draft, applyDamageArgs, rng)
-        if(!applyDamageResult.isOk) throw new Error(applyDamageResult.errorText)
+        if (!applyDamageResult.isOk) throw new Error(applyDamageResult.errorText)
         draft = applyDamageResult.state
-        gameRecords.push({tool: "apply_damage", args: applyDamageArgs, event: applyDamageResult.event})
+        gameRecords.push({
+          tool: "apply_damage",
+          args: applyDamageArgs,
+          event: applyDamageResult.event,
+        })
         break
       }
       case "attack": {
         const attackArgs = ToolArgsSchemas.attack.parse(call.args)
         const attackResult = attack(draft, attackArgs, rng)
-        if(!attackResult.isOk) throw new Error(attackResult.errorText)
+        if (!attackResult.isOk) throw new Error(attackResult.errorText)
         draft = attackResult.state
-        gameRecords.push({tool: "attack", args: attackArgs, event: attackResult.event})
+        gameRecords.push({ tool: "attack", args: attackArgs, event: attackResult.event })
         break
       }
       case "death_save": {
         const deathSaveArgs = ToolArgsSchemas.death_save.parse(call.args)
         const deathSaveResult = deathSave(draft, deathSaveArgs, rng)
-        if(!deathSaveResult.isOk) throw new Error(deathSaveResult.errorText)
+        if (!deathSaveResult.isOk) throw new Error(deathSaveResult.errorText)
         draft = deathSaveResult.state
-        gameRecords.push({tool: "death_save", args: deathSaveArgs, event: deathSaveResult.event})
+        gameRecords.push({ tool: "death_save", args: deathSaveArgs, event: deathSaveResult.event })
         break
       }
       default: {
@@ -54,7 +57,7 @@ export function executeTools(tools: ToolCall[], gameState: GameState, rng: Rng):
     }
   }
 
-  return {state: draft, records: gameRecords }
+  return { state: draft, records: gameRecords }
 }
 
 export class Master {
@@ -75,11 +78,15 @@ export class Master {
   async handleMessage(text: string): Promise<string> {
     let draft = await this._store.startAction(this._roomId)
     try {
-      const messages: StoryMessage[] = [{messageType: "player_text", text}]
+      const messages: StoryMessage[] = [{ messageType: "player_text", text }]
 
       for (let i = 0; i < this._maxRounds; i++) {
         const instructions = modelDefinition.modelInstruction + "\n" + JSON.stringify(draft)
-        const modelResponse = await this._model.generate([...this._messages, ...messages], toolDefinitions, instructions)
+        const modelResponse = await this._model.generate(
+          [...this._messages, ...messages],
+          toolDefinitions,
+          instructions,
+        )
         messages.push(modelResponse)
         switch (modelResponse.messageType) {
           case "model_text": {
@@ -90,7 +97,7 @@ export class Master {
           case "tool_calls": {
             const executionResult = executeTools(modelResponse.calls, draft, this._rng)
             draft = executionResult.state
-            messages.push({messageType: "tool_results", records: executionResult.records})
+            messages.push({ messageType: "tool_results", records: executionResult.records })
             break
           }
           default: {

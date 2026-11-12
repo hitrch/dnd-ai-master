@@ -1,12 +1,12 @@
 import { z } from "zod"
 import { SkillSchema } from "./skills"
-import type {ToolName} from "./types"
+import type { ToolName } from "./types"
 
 export const RollCheckArgsSchema = z.object({
   characterId: z.string(),
   skill: SkillSchema,
   dc: z.number().int().min(5).max(25),
-});
+})
 export type RollCheckArgs = z.infer<typeof RollCheckArgsSchema>
 
 export const ApplyDamageArgsSchema = z.object({
@@ -14,7 +14,7 @@ export const ApplyDamageArgsSchema = z.object({
   diceCount: z.number().int().min(1).max(10),
   diceSides: z.literal([4, 6, 8, 10, 12, 20]),
   bonus: z.number().int().min(0).max(10),
-});
+})
 export type ApplyDamageArgs = z.infer<typeof ApplyDamageArgsSchema>
 
 export const AttackArgsSchema = z.object({

@@ -1,4 +1,4 @@
-import type {GameRecord, ToolName} from "@dnd/shared"
+import type { GameRecord, ToolName } from "@dnd/shared"
 
 export type ToolCall = {
   name: string
@@ -9,23 +9,24 @@ export type ToolCall = {
 
 export type StoryMessage =
   | {
-  messageType: "player_text"
-  text: string
-} | ModelResponse
+      messageType: "player_text"
+      text: string
+    }
+  | ModelResponse
   | {
-  messageType: "tool_results"
-  records: GameRecord[]
-}
+      messageType: "tool_results"
+      records: GameRecord[]
+    }
 
 export type ModelResponse =
   | {
-  messageType: "model_text"
-  text: string
-}
+      messageType: "model_text"
+      text: string
+    }
   | {
-  messageType: "tool_calls"
-  calls: [ToolCall, ...ToolCall[]]
-}
+      messageType: "tool_calls"
+      calls: [ToolCall, ...ToolCall[]]
+    }
 
 export interface ToolDefinition {
   name: ToolName
@@ -34,5 +35,9 @@ export interface ToolDefinition {
 }
 
 export interface ModelProvider {
-  generate(messages: StoryMessage[], tools: ToolDefinition[], systemInstruction: string): Promise<ModelResponse>
+  generate(
+    messages: StoryMessage[],
+    tools: ToolDefinition[],
+    systemInstruction: string,
+  ): Promise<ModelResponse>
 }

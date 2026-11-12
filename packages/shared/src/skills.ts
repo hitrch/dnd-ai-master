@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "zod"
 
 export const SkillSchema = z.enum([
   "stealth",
@@ -7,5 +7,5 @@ export const SkillSchema = z.enum([
   "perception",
   "intimidation",
   "deception",
-]);
-export type Skill = z.infer<typeof SkillSchema>;
+])
+export type Skill = z.infer<typeof SkillSchema>

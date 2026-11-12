@@ -1,7 +1,7 @@
-import type {ToolName} from "@dnd/shared"
-import {ToolArgsSchemas} from "@dnd/shared"
+import type { ToolName } from "@dnd/shared"
+import { ToolArgsSchemas } from "@dnd/shared"
 import { z } from "zod"
-import type {ToolDefinition} from "../model/types";
+import type { ToolDefinition } from "../model/types"
 
 // How to read the damage part of a result, shared by attack and apply_damage
 const damageOutcomeDescription =
@@ -31,7 +31,8 @@ export const ToolDescriptions = {
     "A natural 20 is a critical hit with doubled damage dice; a natural 1 always misses. " +
     "The result contains the roll, the total, whether it hit, whether it was critical and, on a hit, the damage " +
     "(each roll, the bonus, the amount, hit points before and after and the outcome); damage is null on a miss. " +
-    "Narrate a miss as a miss. " + damageOutcomeDescription,
+    "Narrate a miss as a miss. " +
+    damageOutcomeDescription,
   apply_damage:
     "Deals damage without an attack roll to a player character or an enemy and lowers their hit points: " +
     "traps, falls, fire, poison and other hazards. Never use it for a weapon attack: attacks go through attack. " +
@@ -57,11 +58,11 @@ export const ToolDescriptions = {
     "Narrate the struggle between life and death according to the outcome; never decide it yourself.",
 } satisfies Record<ToolName, string>
 
-export const toolDefinitions: ToolDefinition[] = Object.keys(ToolArgsSchemas).map(tool => {
+export const toolDefinitions: ToolDefinition[] = Object.keys(ToolArgsSchemas).map((tool) => {
   const toolName = tool as ToolName
   return {
     name: toolName,
     description: ToolDescriptions[toolName],
-    argsSchema: z.toJSONSchema(ToolArgsSchemas[toolName])
+    argsSchema: z.toJSONSchema(ToolArgsSchemas[toolName]),
   }
 })

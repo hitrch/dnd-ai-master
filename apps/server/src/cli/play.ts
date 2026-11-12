@@ -1,10 +1,8 @@
-import {createModel, createSampleState} from "../setup";
-import {GameStateService} from "../storage/gameStateService";
-import {Master} from "../master/master";
+import { createModel, createSampleState } from "../setup"
+import { GameStateService } from "../storage/gameStateService"
+import { Master } from "../master/master"
 import { createInterface } from "node:readline/promises"
 import { stdin, stdout } from "node:process"
-
-
 
 const rl = createInterface({ input: stdin, output: stdout })
 const store = new GameStateService()
@@ -19,9 +17,9 @@ console.log("/state for state, /exit to exit, anything else to send to the model
 rl.prompt()
 for await (const line of rl) {
   const trimmedLine = line.trim()
-  if(trimmedLine === "/exit") break
-  else if(trimmedLine === "/state") console.dir(await store.getRoomById(roomId), {depth: null})
-  else if(trimmedLine) {
+  if (trimmedLine === "/exit") break
+  else if (trimmedLine === "/state") console.dir(await store.getRoomById(roomId), { depth: null })
+  else if (trimmedLine) {
     try {
       const response = await master.handleMessage(trimmedLine)
       console.log(response)

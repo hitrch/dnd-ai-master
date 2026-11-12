@@ -1,23 +1,22 @@
-import type {ApplyDamageArgs, AttackArg, DeathSaveArgs, RollCheckArgs} from "./tools";
-import type {Skill} from "./skills";
-import type {GameState} from "./state";
-
+import type { ApplyDamageArgs, AttackArg, DeathSaveArgs, RollCheckArgs } from "./tools"
+import type { Skill } from "./skills"
+import type { GameState } from "./state"
 
 export type ToolMap = {
   roll_check: {
-    event: CheckEvent,
+    event: CheckEvent
     args: RollCheckArgs
-  },
+  }
   apply_damage: {
-    event: DamageEvent,
+    event: DamageEvent
     args: ApplyDamageArgs
-  },
+  }
   attack: {
-    event: AttackEvent,
+    event: AttackEvent
     args: AttackArg
   }
   death_save: {
-    event: DeathSaveEvent,
+    event: DeathSaveEvent
     args: DeathSaveArgs
   }
 }
@@ -80,15 +79,15 @@ export type GameRecord = {
     args: ToolMap[K]["args"]
     event: ToolMap[K]["event"]
   }
-} [keyof ToolMap]
+}[keyof ToolMap]
 
 export type ReturnResult<T extends ToolName> =
   | {
-  isOk: false
-  errorText: string
-}
+      isOk: false
+      errorText: string
+    }
   | {
-  isOk: true
-  event: ToolMap[T]["event"]
-  state: GameState
-}
+      isOk: true
+      event: ToolMap[T]["event"]
+      state: GameState
+    }

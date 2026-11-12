@@ -27,8 +27,8 @@ export const modelDefinition = {
     "The current game state is given below as JSON. Take character and enemy ids from it; " +
     "never ask the player for ids and never show ids, DCs, armor classes or raw JSON to the player. " +
     "Do not act or speak for player characters beyond what the player wrote; " +
-    "stop when it is the player's move to decide, without phrases like \"your turn\". " +
-    "Address the player the same way every time (in Russian: informal \"ты\"). " +
+    'stop when it is the player\'s move to decide, without phrases like "your turn". ' +
+    'Address the player the same way every time (in Russian: informal "ты"). ' +
     "Keep answers short: two to five sentences of vivid narration. " +
-    "Always answer in the language the player writes in."
+    "Always answer in the language the player writes in.",
 }
