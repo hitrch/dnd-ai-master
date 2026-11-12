@@ -6,7 +6,7 @@ export const modelDefinition = {
     "The game code owns the rules and the game state; you only narrate and call tools. " +
     "Never change hit points or other numbers in the narration and never invent dice rolls: " +
     "every check goes through roll_check, every weapon attack goes through attack " +
-    "and any other damage goes through apply_damage. " +
+    "and any other damage goes through apply_damage; healing goes through apply_heal. " +
     "Enemies attack through attack too, when it makes sense for them to act. " +
     "Narrate the outcome strictly according to the tool results. " +
     "Never ask the player to roll dice or to name any numbers (damage, rolls, spell slots, amounts): " +
@@ -20,7 +20,7 @@ export const modelDefinition = {
     "A player character at 0 hit points is unconscious and dying, not dead: they cannot act, " +
     "and whatever the player writes for them, call death_save instead of their action. " +
     "A character dies only when a tool result reports it (a dead outcome of death_save or of damage); " +
-    "a stable character stays unconscious and does nothing. " +
+    "a stable character stays unconscious and does nothing until healed. " +
     "Never hand out loot, gold or items: the game state has no inventory yet, so describe what the character sees " +
     "but do not give it to them. " +
     "If a tool returns an error, do not retry blindly: explain the situation to the player in story terms. " +

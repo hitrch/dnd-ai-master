@@ -112,6 +112,34 @@ test("death_save is described to the model", () => {
   assert.ok(definition.description.length > 0)
 })
 
+test("apply_heal call is executed by the engine and recorded", () => {
+  // 1d4 = 3: from 0 HP to 3
+  const down = { ...state, players: [{ ...state.players[0], hp: 0, saveRollFails: 2 }] }
+  const args = { targetId: "p1", ...d4 }
+  const r = executeTools([{ name: "apply_heal", args }], down, fixed(0.5))
+  const rec = r.records[0]
+  assert.ok(rec.tool === "apply_heal")
+  assert.deepEqual(rec.args, args)
+  assert.equal(rec.event.hpAfter, 3)
+  assert.equal(rec.event.outcome, "regainedConsciousness")
+  assert.equal(r.state.players[0].hp, 3)
+  assert.equal(r.state.players[0].saveRollFails, 0)
+})
+
+test("apply_heal refused by the engine throws", () => {
+  // the goblin at 0 HP is dead
+  const deadGoblin = { ...state, enemies: [{ ...state.enemies[0], hp: 0 }] }
+  assert.throws(() =>
+    executeTools([{ name: "apply_heal", args: { targetId: "e1", ...d4 } }], deadGoblin, fixed(0.5)),
+  )
+})
+
+test("apply_heal is described to the model", () => {
+  const definition = toolDefinitions.find((d) => d.name === "apply_heal")
+  assert.ok(definition)
+  assert.ok(definition.description.length > 0)
+})
+
 test("attack with an invalid args shape throws", () => {
   assert.throws(() =>
     executeTools(
@@ -321,6 +349,7 @@ test("handleMessage: model is offered every tool", async () => {
   const tools = calls[0].tools
   assert.deepEqual(tools.map((t) => t.name).sort(), [
     "apply_damage",
+    "apply_heal",
     "attack",
     "death_save",
     "roll_check",

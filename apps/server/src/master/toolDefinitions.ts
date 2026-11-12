@@ -56,6 +56,23 @@ export const ToolDescriptions = {
     "The result contains the roll, the successes and failures after the roll and the outcome: " +
     "success, failure, stable, dead or revived. " +
     "Narrate the struggle between life and death according to the outcome; never decide it yourself.",
+  apply_heal:
+    "Restores hit points to a player character or an enemy: a healing potion, a healing spell, " +
+    "an enemy healer tending an ally. Healing never misses and never crits. " +
+    "Call it only when there is a real source of healing in the story: a spell or ability listed for the character " +
+    "in the game state, or a potion or healer that actually exists in the scene. " +
+    "Wishes like 'I drink a potion' or 'I heal myself' are not enough on their own; if there is no source, " +
+    "the attempt fails in story terms and you do not call this tool. " +
+    "Use the target id from the game state. " +
+    "Describe the healing as dice, the way D&D writes it: 2d4+2 is diceCount 2, diceSides 4, bonus 2. " +
+    "Pick the dice by the source: 2d4+2 for a potion of healing, 1d8 plus a small bonus for a healing touch, " +
+    "1d4 plus a small bonus for a quick healing word. " +
+    "The engine rolls the dice and calculates the healing; never pick a total yourself and never use numbers from the player. " +
+    "Hit points never go above the maximum: the rest of the roll is lost. " +
+    "The result contains each roll, the bonus, the rolled amount, hit points before and after and the outcome: " +
+    "healed (the target was conscious) or regainedConsciousness (a player character at 0 hit points wakes up, " +
+    "stops making death saves and can act again). " +
+    "regainedConsciousness is not a resurrection: the dead cannot be healed and the engine refuses it.",
 } satisfies Record<ToolName, string>
 
 export const toolDefinitions: ToolDefinition[] = Object.keys(ToolArgsSchemas).map((tool) => {

@@ -1,14 +1,17 @@
 import { z } from "zod"
 
+export const DiceSchema = z.object({
+  diceCount: z.number().int().min(1).max(10),
+  diceSides: z.literal([4, 6, 8, 10, 12, 20]),
+  bonus: z.number().int().min(0).max(10),
+})
+export type Dice = z.infer<typeof DiceSchema>
+
 export const WeaponSchema = z.object({
   id: z.string(),
   name: z.string(),
   attackBonus: z.number().int().min(0).max(10),
-  damage: z.object({
-    diceCount: z.number().int().min(1).max(10),
-    diceSides: z.literal([4, 6, 8, 10, 12, 20]),
-    bonus: z.number().int().min(0).max(10),
-  }),
+  damage: DiceSchema,
 })
 export type Weapon = z.infer<typeof WeaponSchema>
 

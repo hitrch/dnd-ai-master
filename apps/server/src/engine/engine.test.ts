@@ -2,7 +2,7 @@ import { test } from "node:test"
 import assert from "node:assert/strict"
 import { GameStateSchema, ToolArgsSchemas } from "@dnd/shared"
 import type { GameState } from "@dnd/shared"
-import { rollCheck, applyDamage, attack, deathSave } from "./engine"
+import { rollCheck, applyDamage, applyHeal, attack, deathSave } from "./engine"
 
 const state = GameStateSchema.parse({
   location: "Подножие башни",
@@ -745,4 +745,153 @@ test("damage refusals: dead player and enemy at 0 HP, nothing is rolled", () => 
     const r = run()
     assert.equal(r.isOk, false, name)
   }
+})
+
+// ---------- healing ----------
+// d4: 0 rolls 1, 0.5 rolls 3, 0.999 rolls 4; d8: 0.5 rolls 5
+
+test("heal: raises HP, fills the event and does not mutate the original state", () => {
+  const wounded = withPlayer({ hp: 4 })
+  const r = applyHeal(wounded, { targetId: "p1", diceCount: 1, diceSides: 8, bonus: 2 }, fixed(0.5))
+  assert.ok(r.isOk)
+  assert.deepEqual(r.event, {
+    targetId: "p1",
+    targetName: "Арвен",
+    amount: 7,
+    rolls: [5],
+    bonus: 2,
+    hpBefore: 4,
+    hpAfter: 11,
+    outcome: "healed",
+  })
+  assert.equal(r.state.players[0].hp, 11)
+  assert.equal(wounded.players[0].hp, 4)
+})
+
+test("heal: HP never exceeds max HP, amount is still the full roll", () => {
+  // 2d4 + 2 = 4 + 4 + 2 = 10, but only 2 HP are missing
+  const r = applyHeal(
+    withPlayer({ hp: 10 }),
+    { targetId: "p1", diceCount: 2, diceSides: 4, bonus: 2 },
+    fixed(0.999),
+  )
+  assert.ok(r.isOk)
+  assert.equal(r.event.amount, 10)
+  assert.equal(r.event.hpAfter, 12)
+  assert.equal(r.state.players[0].hp, 12)
+})
+
+test("heal: rng is called exactly once per die, no crits", () => {
+  // three d20 rolls of 20 must not double anything
+  const { rng, calls } = sequence(0.999, 0.999, 0.999)
+  const r = applyHeal(
+    withPlayer({ hp: 1 }),
+    { targetId: "p1", diceCount: 3, diceSides: 20, bonus: 0 },
+    rng,
+  )
+  assert.ok(r.isOk)
+  assert.deepEqual(r.event.rolls, [20, 20, 20])
+  assert.equal(r.event.amount, 60)
+  assert.equal(calls(), 3)
+})
+
+test("heal: character at 0 HP regains consciousness and the death save counters reset", () => {
+  const r = applyHeal(
+    withDownPlayer({ saveRollFails: 2, saveRollSuccesses: 1 }),
+    { targetId: "p1", diceCount: 1, diceSides: 4, bonus: 0 },
+    fixed(0),
+  )
+  assert.ok(r.isOk)
+  assert.equal(r.event.hpBefore, 0)
+  assert.equal(r.event.hpAfter, 1)
+  assert.equal(r.event.outcome, "regainedConsciousness")
+  const p = r.state.players[0]
+  assert.equal(p.hp, 1)
+  assert.equal(p.saveRollFails, 0)
+  assert.equal(p.saveRollSuccesses, 0)
+  assert.equal(p.isStabilizedAfterSave, false)
+})
+
+test("heal: stable character regains consciousness and is no longer stable", () => {
+  const r = applyHeal(
+    withDownPlayer({ isStabilizedAfterSave: true }),
+    { targetId: "p1", diceCount: 1, diceSides: 4, bonus: 0 },
+    fixed(0.5),
+  )
+  assert.ok(r.isOk)
+  assert.equal(r.event.outcome, "regainedConsciousness")
+  assert.equal(r.state.players[0].hp, 3)
+  assert.equal(r.state.players[0].isStabilizedAfterSave, false)
+})
+
+test("heal: healed character can act again", () => {
+  const healed = applyHeal(
+    withDownPlayer(),
+    { targetId: "p1", diceCount: 1, diceSides: 4, bonus: 0 },
+    fixed(0.5),
+  )
+  assert.ok(healed.isOk)
+  const check = rollCheck(healed.state, { characterId: "p1", skill: "stealth", dc: 10 }, fixed(0.5))
+  assert.ok(check.isOk)
+})
+
+test("heal: enemies can be healed, players stay untouched", () => {
+  const r = applyHeal(
+    withGoblin({ hp: 2 }),
+    { targetId: "e1", diceCount: 1, diceSides: 4, bonus: 0 },
+    fixed(0.5),
+  )
+  assert.ok(r.isOk)
+  assert.equal(r.event.hpAfter, 5)
+  assert.equal(r.event.outcome, "healed")
+  assert.equal(r.state.enemies[0].hp, 5)
+  assert.deepEqual(r.state.players, state.players)
+})
+
+test("heal: refusals roll nothing", () => {
+  const dice = { diceCount: 1, diceSides: 4, bonus: 0 } as const
+  const cases: [string, GameState, string][] = [
+    ["unknown target", state, "ghost"],
+    ["dead player", withDownPlayer({ saveRollFails: 3 }), "p1"],
+    ["enemy at 0 HP", withGoblin({ hp: 0 }), "e1"],
+  ]
+  for (const [name, s, targetId] of cases) {
+    const r = applyHeal(s, { targetId, ...dice }, sequence().rng)
+    assert.equal(r.isOk, false, name)
+  }
+})
+
+test("heal args schema: same dice limits as damage, flat args", () => {
+  const schema = ToolArgsSchemas.apply_heal
+  const valid = { targetId: "p1", diceCount: 2, diceSides: 4, bonus: 2 }
+  assert.equal(schema.safeParse(valid).success, true)
+  assert.equal(
+    schema.safeParse({ targetId: "p1", diceCount: 10, diceSides: 20, bonus: 10 }).success,
+    true,
+  )
+  const invalid = [
+    { ...valid, diceCount: 0 },
+    { ...valid, diceCount: 11 },
+    { ...valid, diceSides: 7 },
+    { ...valid, bonus: -1 },
+    { ...valid, bonus: 11 },
+    { targetId: "p1", amount: 50 },
+    { targetId: "p1", dice: { diceCount: 2, diceSides: 4, bonus: 2 } },
+  ]
+  for (const args of invalid) {
+    assert.equal(schema.safeParse(args).success, false, JSON.stringify(args))
+  }
+})
+
+test("weapon schema: damage dice use the same limits", () => {
+  const weapon = { id: "w", name: "W", attackBonus: 0 }
+  const make = (damage: unknown) =>
+    GameStateSchema.safeParse({
+      ...state,
+      players: [{ ...state.players[0], weapons: [{ ...weapon, damage }] }],
+    }).success
+  assert.equal(make({ diceCount: 1, diceSides: 6, bonus: 0 }), true)
+  assert.equal(make({ diceCount: 11, diceSides: 6, bonus: 0 }), false)
+  assert.equal(make({ diceCount: 1, diceSides: 7, bonus: 0 }), false)
+  assert.equal(make({ diceCount: 1, diceSides: 6, bonus: 11 }), false)
 })

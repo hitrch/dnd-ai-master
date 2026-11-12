@@ -1,5 +1,5 @@
 import type { ModelProvider, StoryMessage, ToolCall } from "../model/types"
-import { applyDamage, attack, deathSave, rollCheck } from "../engine/engine"
+import { applyDamage, applyHeal, attack, deathSave, rollCheck } from "../engine/engine"
 import type { Rng } from "../engine/engine"
 import { ToolArgsSchemas } from "@dnd/shared"
 import type { GameState, GameRecord } from "@dnd/shared"
@@ -48,6 +48,14 @@ export function executeTools(tools: ToolCall[], gameState: GameState, rng: Rng):
         if (!deathSaveResult.isOk) throw new Error(deathSaveResult.errorText)
         draft = deathSaveResult.state
         gameRecords.push({ tool: "death_save", args: deathSaveArgs, event: deathSaveResult.event })
+        break
+      }
+      case "apply_heal": {
+        const applyHealArgs = ToolArgsSchemas.apply_heal.parse(call.args)
+        const applyHealResult = applyHeal(draft, applyHealArgs, rng)
+        if (!applyHealResult.isOk) throw new Error(applyHealResult.errorText)
+        draft = applyHealResult.state
+        gameRecords.push({ tool: "apply_heal", args: applyHealArgs, event: applyHealResult.event })
         break
       }
       default: {

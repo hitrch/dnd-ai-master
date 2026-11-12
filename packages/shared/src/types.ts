@@ -1,4 +1,10 @@
-import type { ApplyDamageArgs, AttackArgs, DeathSaveArgs, RollCheckArgs } from "./tools"
+import type {
+  ApplyDamageArgs,
+  ApplyHealArgs,
+  AttackArgs,
+  DeathSaveArgs,
+  RollCheckArgs,
+} from "./tools"
 import type { Skill } from "./skills"
 import type { GameState } from "./state"
 
@@ -18,6 +24,10 @@ export type ToolMap = {
   death_save: {
     event: DeathSaveEvent
     args: DeathSaveArgs
+  }
+  apply_heal: {
+    event: HealEvent
+    args: ApplyHealArgs
   }
 }
 export type ToolName = keyof ToolMap
@@ -55,6 +65,19 @@ export type DamageEvent = {
   hpBefore: number
   hpAfter: number
   outcome: DamageOutcome
+}
+
+export type HealOutcome = "healed" | "regainedConsciousness"
+
+export type HealEvent = {
+  targetId: string
+  targetName: string
+  amount: number
+  rolls: number[]
+  bonus: number
+  hpBefore: number
+  hpAfter: number
+  outcome: HealOutcome
 }
 
 export type AttackEvent = {

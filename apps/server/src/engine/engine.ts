@@ -12,7 +12,9 @@ import {
   Character,
   DamageOutcome,
   Enemy,
-  Weapon,
+  ApplyHealArgs,
+  Dice,
+  HealEvent,
 } from "@dnd/shared"
 
 // Random number generator in [0, 1). Math.random in the game, replaced in tests.
@@ -24,6 +26,17 @@ interface RollAndApplyDamageResult {
 
 export function rollD(rng: Rng, sides: number): number {
   return Math.floor(rng() * sides) + 1
+}
+
+function rollDices(diceInfo: Dice, rng: Rng): { rolls: number[]; amount: number } {
+  const rolls: number[] = []
+  let amount = diceInfo.bonus
+  for (let i = 0; i < diceInfo.diceCount; i++) {
+    const roll = rollD(rng, diceInfo.diceSides)
+    rolls.push(roll)
+    amount += roll
+  }
+  return { rolls, amount }
 }
 
 function changeCreatureInList<T extends Creature>(list: T[], creature: T): T[] {
@@ -41,7 +54,7 @@ function isPlayerDead(player: Character): boolean {
   return player.saveRollFails === 3
 }
 
-function getDamageTargetError(target: Character | Enemy): string | null {
+function getTargetError(target: Character | Enemy): string | null {
   if (isCharacter(target)) {
     if (isPlayerDead(target)) return `${target.name} is already dead`
   } else {
@@ -58,20 +71,17 @@ function findCreatureById(state: GameState, id: string): Character | Enemy | und
 function rollAndApplyDamage(
   state: GameState,
   target: Character | Enemy,
-  damage: Weapon["damage"],
+  damage: Dice,
   isCritical: boolean,
   rng: Rng,
 ): RollAndApplyDamageResult {
   const bonus = damage.bonus
-  let amount = bonus
-  const rolls: number[] = []
   const diceCountConsideringCrit = isCritical ? damage.diceCount * 2 : damage.diceCount
 
-  for (let i = 0; i < diceCountConsideringCrit; i++) {
-    const roll = rollD(rng, damage.diceSides)
-    rolls.push(roll)
-    amount += roll
-  }
+  const { rolls, amount } = rollDices(
+    { diceCount: diceCountConsideringCrit, diceSides: damage.diceSides, bonus },
+    rng,
+  )
 
   const hpAfter = Math.max(0, target.hp - amount)
   const event: Omit<DamageEvent, "outcome"> = {
@@ -174,7 +184,7 @@ export function applyDamage(
   const target = findCreatureById(state, targetId)
   if (!target) return { isOk: false, errorText: `Unknown target: ${targetId}` }
 
-  const targetError = getDamageTargetError(target)
+  const targetError = getTargetError(target)
   if (targetError) return { isOk: false, errorText: targetError }
 
   const result = rollAndApplyDamage(state, target, { diceCount, diceSides, bonus }, false, rng)
@@ -182,6 +192,58 @@ export function applyDamage(
     isOk: true,
     event: result.event,
     state: result.state,
+  }
+}
+
+export function applyHeal(
+  state: GameState,
+  args: ApplyHealArgs,
+  rng: Rng = Math.random,
+): ReturnResult<"apply_heal"> {
+  const { targetId, diceCount, diceSides, bonus } = args
+  const target = findCreatureById(state, targetId)
+  if (!target) return { isOk: false, errorText: `Unknown target: ${targetId}` }
+
+  const targetError = getTargetError(target)
+  if (targetError) return { isOk: false, errorText: targetError }
+
+  const { rolls, amount } = rollDices({ diceCount, diceSides, bonus }, rng)
+  const hpAfter = Math.min(target.maxHp, target.hp + amount)
+  const event: HealEvent = {
+    targetId: target.id,
+    targetName: target.name,
+    amount,
+    rolls,
+    bonus,
+    hpBefore: target.hp,
+    hpAfter,
+    outcome: target.hp === 0 ? "regainedConsciousness" : "healed",
+  }
+  if (isCharacter(target)) {
+    return {
+      isOk: true,
+      event,
+      state: {
+        ...state,
+        players: changeCreatureInList(state.players, {
+          ...target,
+          hp: hpAfter,
+          saveRollFails: 0,
+          saveRollSuccesses: 0,
+          isStabilizedAfterSave: false,
+        }),
+      },
+    }
+  }
+
+  // target considered enemy
+  return {
+    isOk: true,
+    event,
+    state: {
+      ...state,
+      enemies: changeCreatureInList(state.enemies, { ...target, hp: hpAfter }),
+    },
   }
 }
 
@@ -201,7 +263,7 @@ export function attack(
   const target = findCreatureById(state, args.targetId)
   if (!target) return { isOk: false, errorText: `Unknown target with id: ${args.targetId}` }
 
-  const targetError = getDamageTargetError(target)
+  const targetError = getTargetError(target)
   if (targetError) return { isOk: false, errorText: targetError }
 
   const weapon = attacker.weapons.find((w) => w.id === args.weaponId)
