@@ -22,7 +22,7 @@ export const AttackArgsSchema = z.object({
   weaponId: z.string(),
   targetId: z.string(),
 })
-export type AttackArg = z.infer<typeof AttackArgsSchema>
+export type AttackArgs = z.infer<typeof AttackArgsSchema>
 
 export const DeathSaveArgsSchema = z.object({
   characterId: z.string(),

@@ -1,4 +1,4 @@
-import type { ApplyDamageArgs, AttackArg, DeathSaveArgs, RollCheckArgs } from "./tools"
+import type { ApplyDamageArgs, AttackArgs, DeathSaveArgs, RollCheckArgs } from "./tools"
 import type { Skill } from "./skills"
 import type { GameState } from "./state"
 
@@ -13,7 +13,7 @@ export type ToolMap = {
   }
   attack: {
     event: AttackEvent
-    args: AttackArg
+    args: AttackArgs
   }
   death_save: {
     event: DeathSaveEvent
