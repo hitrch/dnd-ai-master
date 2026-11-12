@@ -6,8 +6,13 @@
     "packages/*",
     "apps/*"
   ],
+  "scripts": {
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
   "devDependencies": {
     "@types/node": "^26.6.5",
+    "prettier": "3.10.1",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"
   }
