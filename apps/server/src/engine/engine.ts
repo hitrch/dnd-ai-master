@@ -28,7 +28,7 @@ export function rollD(rng: Rng, sides: number): number {
   return Math.floor(rng() * sides) + 1
 }
 
-function rollDices(diceInfo: Dice, rng: Rng): { rolls: number[]; amount: number } {
+function rollDice(diceInfo: Dice, rng: Rng): { rolls: number[]; amount: number } {
   const rolls: number[] = []
   let amount = diceInfo.bonus
   for (let i = 0; i < diceInfo.diceCount; i++) {
@@ -78,7 +78,7 @@ function rollAndApplyDamage(
   const bonus = damage.bonus
   const diceCountConsideringCrit = isCritical ? damage.diceCount * 2 : damage.diceCount
 
-  const { rolls, amount } = rollDices(
+  const { rolls, amount } = rollDice(
     { diceCount: diceCountConsideringCrit, diceSides: damage.diceSides, bonus },
     rng,
   )
@@ -207,7 +207,7 @@ export function applyHeal(
   const targetError = getTargetError(target)
   if (targetError) return { isOk: false, errorText: targetError }
 
-  const { rolls, amount } = rollDices({ diceCount, diceSides, bonus }, rng)
+  const { rolls, amount } = rollDice({ diceCount, diceSides, bonus }, rng)
   const hpAfter = Math.min(target.maxHp, target.hp + amount)
   const event: HealEvent = {
     targetId: target.id,
@@ -326,7 +326,7 @@ export function deathSave(
 
   if (roll === 20) {
     hp = 1
-    outcome = "revived"
+    outcome = "regainedConsciousness"
     currentSuccesses = 0
     currentFailures = 0
   } else if (roll === 1) {

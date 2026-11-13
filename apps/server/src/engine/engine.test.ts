@@ -479,7 +479,7 @@ test("death save: a stable character cannot roll again", () => {
   assert.equal(r.isOk, false)
 })
 
-test("death save: natural 20 revives with 1 HP and resets the counters", () => {
+test("death save: natural 20 regains consciousness with 1 HP and resets the counters", () => {
   const r = deathSave(
     withDownPlayer({ saveRollSuccesses: 2, saveRollFails: 2 }),
     saveP1,
@@ -487,7 +487,7 @@ test("death save: natural 20 revives with 1 HP and resets the counters", () => {
   )
   assert.ok(r.isOk)
   assert.equal(r.event.roll, 20)
-  assert.equal(r.event.outcome, "revived")
+  assert.equal(r.event.outcome, "regainedConsciousness")
   assert.equal(r.event.successes, 0)
   assert.equal(r.event.failures, 0)
   const player = r.state.players[0]

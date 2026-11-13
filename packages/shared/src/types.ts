@@ -32,7 +32,7 @@ export type ToolMap = {
 }
 export type ToolName = keyof ToolMap
 
-export type DeathOutcomeType = "success" | "failure" | "stable" | "dead" | "revived"
+export type DeathOutcomeType = "success" | "failure" | "stable" | "dead" | "regainedConsciousness"
 
 export type DeathSaveEvent = {
   characterId: string

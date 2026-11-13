@@ -54,7 +54,7 @@ export const ToolDescriptions = {
     "Three successes make the character stable: still unconscious at 0 hit points, but no longer dying. " +
     "Three failures mean the character dies. A natural 20 brings the character back to consciousness with 1 hit point. " +
     "The result contains the roll, the successes and failures after the roll and the outcome: " +
-    "success, failure, stable, dead or revived. " +
+    "success, failure, stable, dead or regainedConsciousness. " +
     "Narrate the struggle between life and death according to the outcome; never decide it yourself.",
   apply_heal:
     "Restores hit points to a player character or an enemy: a healing potion, a healing spell, " +
