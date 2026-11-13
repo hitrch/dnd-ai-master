@@ -2,7 +2,15 @@ import { test } from "node:test"
 import assert from "node:assert/strict"
 import { GameStateSchema, ToolArgsSchemas } from "@dnd/shared"
 import type { GameState } from "@dnd/shared"
-import { rollCheck, applyDamage, applyHeal, attack, deathSave } from "./engine"
+import {
+  rollCheck,
+  applyDamage,
+  applyHeal,
+  attack,
+  deathSave,
+  startCombat,
+  endCombat,
+} from "./engine"
 
 const state = GameStateSchema.parse({
   location: "Подножие башни",
@@ -22,6 +30,7 @@ const state = GameStateSchema.parse({
         },
       ],
       skills: { stealth: 5, athletics: 1 },
+      initiativeModifier: 3,
       saveRollFails: 0,
       saveRollSuccesses: 0,
       isStabilizedAfterSave: false,
@@ -43,8 +52,10 @@ const state = GameStateSchema.parse({
         },
       ],
       skills: { stealth: 6 },
+      initiativeModifier: 2,
     },
   ],
+  combat: null,
 })
 
 // rng = 0 rolls 1 on the die, 0.5 rolls 11, 0.999 rolls 20
@@ -894,4 +905,184 @@ test("weapon schema: damage dice use the same limits", () => {
   assert.equal(make({ diceCount: 11, diceSides: 6, bonus: 0 }), false)
   assert.equal(make({ diceCount: 1, diceSides: 7, bonus: 0 }), false)
   assert.equal(make({ diceCount: 1, diceSides: 6, bonus: 11 }), false)
+})
+
+// ---------- combat ----------
+
+// The rng value that rolls n on a d20
+const d20 = (n: number) => (n - 1) / 20 + 0.01
+
+// Two players and two goblins: p1 +3, p2 -1, e1 +2, e2 +2
+const ally: Player = { ...state.players[0], id: "p2", name: "Борин", initiativeModifier: -1 }
+const archer = { ...state.enemies[0], id: "e2", name: "Гоблин-лучник" }
+const crowd: GameState = {
+  ...state,
+  players: [...state.players, ally],
+  enemies: [...state.enemies, archer],
+}
+
+const activeCombat = { order: ["p1", "e1"], round: 3, activeCreatureId: "e1" }
+
+test("start combat: order by initiative total, highest first", () => {
+  // p1 5+3=8, e1 15+2=17, p2 20-1=19, e2 3+2=5
+  const { rng, calls } = sequence(d20(5), d20(15), d20(20), d20(3))
+  const r = startCombat(crowd, { participantIds: ["p1", "e1", "p2", "e2"] }, rng)
+  assert.ok(r.isOk)
+  assert.equal(calls(), 4)
+  assert.deepEqual(
+    r.event.participantsOrder.map((p) => p.id),
+    ["p2", "e1", "p1", "e2"],
+  )
+  assert.deepEqual(r.state.combat, {
+    order: ["p2", "e1", "p1", "e2"],
+    round: 1,
+    activeCreatureId: "p2",
+  })
+})
+
+test("start combat: event participants carry side, roll, modifier and total", () => {
+  const { rng } = sequence(d20(5), d20(15), d20(20), d20(3))
+  const r = startCombat(crowd, { participantIds: ["p1", "e1", "p2", "e2"] }, rng)
+  assert.ok(r.isOk)
+  assert.deepEqual(r.event.participantsOrder, [
+    { id: "p2", name: "Борин", side: "player", roll: 20, initiativeModifier: -1, total: 19 },
+    { id: "e1", name: "Гоблин-часовой", side: "enemy", roll: 15, initiativeModifier: 2, total: 17 },
+    { id: "p1", name: "Арвен", side: "player", roll: 5, initiativeModifier: 3, total: 8 },
+    { id: "e2", name: "Гоблин-лучник", side: "enemy", roll: 3, initiativeModifier: 2, total: 5 },
+  ])
+})
+
+test("start combat: dice are rolled in the order of participantIds", () => {
+  // the same rolls with the ids swapped give the other creature the 20
+  const r = startCombat(state, { participantIds: ["e1", "p1"] }, sequence(d20(20), d20(1)).rng)
+  assert.ok(r.isOk)
+  const goblin = r.event.participantsOrder.find((p) => p.id === "e1")
+  assert.equal(goblin?.roll, 20)
+  assert.equal(r.state.combat?.activeCreatureId, "e1")
+})
+
+test("start combat: equal totals keep the order of participantIds", () => {
+  // p1 10+3=13, e1 11+2=13
+  const pFirst = startCombat(
+    state,
+    { participantIds: ["p1", "e1"] },
+    sequence(d20(10), d20(11)).rng,
+  )
+  assert.ok(pFirst.isOk)
+  assert.deepEqual(pFirst.state.combat?.order, ["p1", "e1"])
+
+  const eFirst = startCombat(
+    state,
+    { participantIds: ["e1", "p1"] },
+    sequence(d20(11), d20(10)).rng,
+  )
+  assert.ok(eFirst.isOk)
+  assert.deepEqual(eFirst.state.combat?.order, ["e1", "p1"])
+})
+
+test("start combat: only the listed creatures join", () => {
+  const r = startCombat(crowd, { participantIds: ["p1", "e1"] }, fixed(0.5))
+  assert.ok(r.isOk)
+  assert.deepEqual([...(r.state.combat?.order ?? [])].sort(), ["e1", "p1"])
+  assert.equal(r.event.participantsOrder.length, 2)
+})
+
+test("start combat: a down but living player takes part", () => {
+  const r = startCombat(withDownPlayer(), { participantIds: ["p1", "e1"] }, fixed(0.5))
+  assert.ok(r.isOk)
+  assert.ok(r.state.combat?.order.includes("p1"))
+})
+
+test("start combat: does not mutate the original state and keeps the creatures", () => {
+  const before = structuredClone(crowd)
+  const r = startCombat(crowd, { participantIds: ["p1", "e1"] }, fixed(0.5))
+  assert.ok(r.isOk)
+  assert.deepEqual(crowd, before)
+  assert.equal(crowd.combat, null)
+  assert.deepEqual(r.state.players, crowd.players)
+  assert.deepEqual(r.state.enemies, crowd.enemies)
+})
+
+test("start combat: refusals roll nothing", () => {
+  const cases: [string, GameState, string[]][] = [
+    ["combat already active", { ...state, combat: activeCombat }, ["p1", "e1"]],
+    ["unknown id", state, ["p1", "orc1"]],
+    ["repeated id", crowd, ["p1", "e1", "e1"]],
+    ["dead player", withDownPlayer({ saveRollFails: 3 }), ["p1", "e1"]],
+    ["enemy at 0 HP", withGoblin({ hp: 0 }), ["p1", "e1"]],
+    ["only enemies", crowd, ["e1", "e2"]],
+    ["only players", crowd, ["p1", "p2"]],
+  ]
+  for (const [name, s, participantIds] of cases) {
+    const r = startCombat(s, { participantIds }, sequence().rng)
+    assert.equal(r.isOk, false, name)
+  }
+})
+
+test("start combat: unknown id is named in the error", () => {
+  const r = startCombat(state, { participantIds: ["p1", "orc1"] }, sequence().rng)
+  assert.equal(r.isOk, false)
+  assert.match(r.errorText, /orc1/)
+})
+
+test("start combat args schema: at least two ids", () => {
+  const schema = ToolArgsSchemas.start_combat
+  assert.equal(schema.safeParse({ participantIds: ["p1", "e1"] }).success, true)
+  const invalid = [{}, { participantIds: [] }, { participantIds: ["p1"] }, { participantIds: "p1" }]
+  for (const args of invalid) {
+    assert.equal(schema.safeParse(args).success, false, JSON.stringify(args))
+  }
+})
+
+test("end combat: removes the combat and reports the last round", () => {
+  const s: GameState = { ...state, combat: activeCombat }
+  const r = endCombat(s)
+  assert.ok(r.isOk)
+  assert.equal(r.state.combat, null)
+  assert.deepEqual(r.event, { lastRound: 3 })
+  assert.deepEqual(r.state.players, s.players)
+  assert.deepEqual(r.state.enemies, s.enemies)
+  assert.deepEqual(s.combat, activeCombat)
+})
+
+test("end combat: refused when no combat is active", () => {
+  const r = endCombat(state)
+  assert.equal(r.isOk, false)
+})
+
+test("start after end: a new combat can begin", () => {
+  const ended = endCombat({ ...state, combat: activeCombat })
+  assert.ok(ended.isOk)
+  const r = startCombat(ended.state, { participantIds: ["p1", "e1"] }, fixed(0.5))
+  assert.ok(r.isOk)
+  assert.equal(r.state.combat?.round, 1)
+})
+
+test("state schema: combat is required, null or a valid combat", () => {
+  assert.equal(GameStateSchema.safeParse({ ...state, combat: null }).success, true)
+  assert.equal(GameStateSchema.safeParse({ ...state, combat: activeCombat }).success, true)
+  const { combat: _omitted, ...withoutCombat } = state
+  const invalid = [
+    withoutCombat,
+    { ...state, combat: { ...activeCombat, order: [] } },
+    { ...state, combat: { ...activeCombat, round: 0 } },
+    { ...state, combat: { order: ["p1"], round: 1 } },
+  ]
+  invalid.forEach((s, i) => {
+    assert.equal(GameStateSchema.safeParse(s).success, false, `invalid case ${i}`)
+  })
+})
+
+test("state schema: initiative modifier is an integer from -5 to 10", () => {
+  const make = (initiativeModifier: unknown) =>
+    GameStateSchema.safeParse({
+      ...state,
+      players: [{ ...state.players[0], initiativeModifier }],
+    }).success
+  assert.equal(make(-5), true)
+  assert.equal(make(10), true)
+  assert.equal(make(-6), false)
+  assert.equal(make(11), false)
+  assert.equal(make(1.5), false)
+  assert.equal(make(undefined), false)
 })

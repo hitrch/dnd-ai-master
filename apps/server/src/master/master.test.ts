@@ -26,14 +26,25 @@ const state = GameStateSchema.parse({
         },
       ],
       skills: { stealth: 5, athletics: 1 },
+      initiativeModifier: 3,
       saveRollFails: 0,
       saveRollSuccesses: 0,
       isStabilizedAfterSave: false,
     },
   ],
   enemies: [
-    { id: "e1", name: "Гоблин-часовой", hp: 7, maxHp: 7, armorClass: 15, weapons: [], skills: {} },
+    {
+      id: "e1",
+      name: "Гоблин-часовой",
+      hp: 7,
+      maxHp: 7,
+      armorClass: 15,
+      weapons: [],
+      skills: {},
+      initiativeModifier: 2,
+    },
   ],
+  combat: null,
 })
 
 // rng = 0 rolls 1 on the die, 0.5 rolls 11, 0.999 rolls 20
@@ -124,6 +135,70 @@ test("apply_heal call is executed by the engine and recorded", () => {
   assert.equal(rec.event.outcome, "regainedConsciousness")
   assert.equal(r.state.players[0].hp, 3)
   assert.equal(r.state.players[0].saveRollFails, 0)
+})
+
+test("start_combat call is executed by the engine and recorded", () => {
+  // p1 11+3=14, e1 11+2=13
+  const args = { participantIds: ["e1", "p1"] }
+  const r = executeTools([{ name: "start_combat", args }], state, fixed(0.5))
+  const rec = r.records[0]
+  assert.ok(rec.tool === "start_combat")
+  assert.deepEqual(rec.args, args)
+  assert.deepEqual(
+    rec.event.participantsOrder.map((p) => p.id),
+    ["p1", "e1"],
+  )
+  assert.deepEqual(r.state.combat, { order: ["p1", "e1"], round: 1, activeCreatureId: "p1" })
+})
+
+test("start_combat refused by the engine throws", () => {
+  // a repeated id passes the schema but not the engine
+  assert.throws(() =>
+    executeTools(
+      [{ name: "start_combat", args: { participantIds: ["e1", "e1"] } }],
+      state,
+      fixed(0.5),
+    ),
+  )
+})
+
+test("end_combat call is executed by the engine and recorded, extra args are dropped", () => {
+  const fighting = { ...state, combat: { order: ["p1", "e1"], round: 2, activeCreatureId: "p1" } }
+  const r = executeTools([{ name: "end_combat", args: { reason: "fled" } }], fighting, fixed(0.5))
+  const rec = r.records[0]
+  assert.ok(rec.tool === "end_combat")
+  assert.deepEqual(rec.args, {})
+  assert.deepEqual(rec.event, { lastRound: 2 })
+  assert.equal(r.state.combat, null)
+})
+
+test("end_combat refused by the engine throws", () => {
+  assert.throws(() => executeTools([{ name: "end_combat", args: {} }], state, fixed(0.5)))
+})
+
+test("start_combat then end_combat in one round of calls", () => {
+  const r = executeTools(
+    [
+      { name: "start_combat", args: { participantIds: ["p1", "e1"] } },
+      { name: "end_combat", args: {} },
+    ],
+    state,
+    fixed(0.5),
+  )
+  assert.equal(r.state.combat, null)
+  assert.deepEqual(
+    r.records.map((rec) => rec.tool),
+    ["start_combat", "end_combat"],
+  )
+})
+
+test("combat tools are described to the model", () => {
+  for (const name of ["start_combat", "end_combat"]) {
+    const definition = toolDefinitions.find((d) => d.name === name)
+    assert.ok(definition, name)
+    assert.ok(definition.description.length > 0, name)
+    assert.equal(definition.argsSchema.type, "object", name)
+  }
 })
 
 test("apply_heal refused by the engine throws", () => {
@@ -352,7 +427,9 @@ test("handleMessage: model is offered every tool", async () => {
     "apply_heal",
     "attack",
     "death_save",
+    "end_combat",
     "roll_check",
+    "start_combat",
   ])
   for (const t of tools) {
     assert.ok(t.description.length > 0, `${t.name} has no description`)

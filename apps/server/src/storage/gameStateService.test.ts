@@ -15,6 +15,7 @@ const makeState = () =>
         armorClass: 14,
         weapons: [],
         skills: { stealth: 5, athletics: 1 },
+        initiativeModifier: 3,
         saveRollFails: 0,
         saveRollSuccesses: 0,
         isStabilizedAfterSave: false,
@@ -29,8 +30,10 @@ const makeState = () =>
         armorClass: 15,
         weapons: [],
         skills: {},
+        initiativeModifier: 2,
       },
     ],
+    combat: null,
   })
 
 test("created room can be read back with an equal state", async () => {

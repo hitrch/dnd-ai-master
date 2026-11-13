@@ -81,6 +81,7 @@ export function createSampleState(): GameState {
           },
         ],
         skills: { stealth: 5, athletics: 1, persuasion: 2, perception: 3 },
+        initiativeModifier: 3,
         saveRollFails: 0,
         saveRollSuccesses: 0,
         isStabilizedAfterSave: false,
@@ -102,7 +103,9 @@ export function createSampleState(): GameState {
           },
         ],
         skills: { stealth: 6 },
+        initiativeModifier: 2,
       },
     ],
+    combat: null,
   })
 }

@@ -1,9 +1,11 @@
-import type {
+import {
   ApplyDamageArgs,
   ApplyHealArgs,
   AttackArgs,
   DeathSaveArgs,
+  EndCombatArgs,
   RollCheckArgs,
+  StartCombatArgs,
 } from "./tools"
 import type { Skill } from "./skills"
 import type { GameState } from "./state"
@@ -29,8 +31,35 @@ export type ToolMap = {
     event: HealEvent
     args: ApplyHealArgs
   }
+  start_combat: {
+    event: StartCombatEvent
+    args: StartCombatArgs
+  }
+  end_combat: {
+    event: EndCombatEvent
+    args: EndCombatArgs
+  }
 }
 export type ToolName = keyof ToolMap
+
+export type EndCombatEvent = {
+  lastRound: number
+}
+
+export type Side = "player" | "enemy"
+
+export interface CombatParticipant {
+  id: string
+  name: string
+  side: Side
+  roll: number
+  initiativeModifier: number
+  total: number
+}
+
+export type StartCombatEvent = {
+  participantsOrder: CombatParticipant[]
+}
 
 export type DeathOutcomeType = "success" | "failure" | "stable" | "dead" | "regainedConsciousness"
 

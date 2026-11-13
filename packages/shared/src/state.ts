@@ -22,6 +22,7 @@ const CreatureSchema = z.object({
   maxHp: z.number().int().positive(),
   armorClass: z.number().int().positive(),
   weapons: z.array(WeaponSchema),
+  initiativeModifier: z.number().int().min(-5).max(10),
   // key - skill name, value - modifier
   skills: z.record(z.string(), z.number().int()),
 })
@@ -40,9 +41,17 @@ export const EnemySchema = z.object({
 })
 export type Enemy = z.infer<typeof EnemySchema>
 
+export const CombatSchema = z.object({
+  order: z.array(z.string()).min(1),
+  round: z.number().int().min(1),
+  activeCreatureId: z.string(),
+})
+export type Combat = z.infer<typeof CombatSchema>
+
 export const GameStateSchema = z.object({
   location: z.string(),
   players: z.array(CharacterSchema),
   enemies: z.array(EnemySchema),
+  combat: CombatSchema.nullable(),
 })
 export type GameState = z.infer<typeof GameStateSchema>

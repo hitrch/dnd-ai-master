@@ -15,6 +15,8 @@ import {
   ApplyHealArgs,
   Dice,
   HealEvent,
+  StartCombatArgs,
+  CombatParticipant,
 } from "@dnd/shared"
 
 // Random number generator in [0, 1). Math.random in the game, replaced in tests.
@@ -374,6 +376,78 @@ export function deathSave(
     state: {
       ...state,
       players,
+    },
+  }
+}
+
+export function startCombat(
+  state: GameState,
+  args: StartCombatArgs,
+  rng: Rng = Math.random,
+): ReturnResult<"start_combat"> {
+  if (state.combat) return { isOk: false, errorText: "Combat already active" }
+
+  const creatures: (Character | Enemy)[] = []
+
+  for (const participantId of args.participantIds) {
+    const participant = findCreatureById(state, participantId)
+    if (!participant)
+      return { isOk: false, errorText: `Unknown participant with id: ${participantId}` }
+    const error = getTargetError(participant)
+    if (error) return { isOk: false, errorText: error }
+    creatures.push(participant)
+  }
+
+  const uniqueParticipants = new Set(creatures)
+  if (uniqueParticipants.size !== creatures.length)
+    return { isOk: false, errorText: "Duplicate participants" }
+
+  if (!creatures.some((c) => isCharacter(c)) || !creatures.some((c) => !isCharacter(c)))
+    return {
+      isOk: false,
+      errorText: "Combat needs at least one player character and at least one enemy",
+    }
+
+  const participants: CombatParticipant[] = creatures.map((c) => {
+    const roll = rollD(rng, 20)
+    return {
+      id: c.id,
+      name: c.name,
+      side: isCharacter(c) ? "player" : "enemy",
+      roll,
+      initiativeModifier: c.initiativeModifier,
+      total: roll + c.initiativeModifier,
+    }
+  })
+
+  // On equal totals the order of participantIds is kept.
+  participants.sort((a, b) => b.total - a.total)
+  const order = participants.map((c) => c.id)
+
+  return {
+    isOk: true,
+    state: {
+      ...state,
+      combat: {
+        order,
+        round: 1,
+        activeCreatureId: order[0],
+      },
+    },
+    event: {
+      participantsOrder: participants,
+    },
+  }
+}
+
+export function endCombat(state: GameState): ReturnResult<"end_combat"> {
+  if (!state.combat) return { isOk: false, errorText: "No combat is active" }
+  return {
+    isOk: true,
+    event: { lastRound: state.combat.round },
+    state: {
+      ...state,
+      combat: null,
     },
   }
 }

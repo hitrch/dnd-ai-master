@@ -34,10 +34,20 @@ export const ApplyHealArgsSchema = z.object({
 })
 export type ApplyHealArgs = z.infer<typeof ApplyHealArgsSchema>
 
+export const StartCombatArgsSchema = z.object({
+  participantIds: z.array(z.string()).min(2),
+})
+export type StartCombatArgs = z.infer<typeof StartCombatArgsSchema>
+
+export const EndCombatArgsSchema = z.object({})
+export type EndCombatArgs = z.infer<typeof EndCombatArgsSchema>
+
 export const ToolArgsSchemas = {
   roll_check: RollCheckArgsSchema,
   apply_damage: ApplyDamageArgsSchema,
   attack: AttackArgsSchema,
   death_save: DeathSaveArgsSchema,
   apply_heal: ApplyHealArgsSchema,
+  start_combat: StartCombatArgsSchema,
+  end_combat: EndCombatArgsSchema,
 } satisfies Record<ToolName, z.ZodType>

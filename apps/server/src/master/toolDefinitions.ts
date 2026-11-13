@@ -73,6 +73,29 @@ export const ToolDescriptions = {
     "healed (the target was conscious) or regainedConsciousness (a player character at 0 hit points wakes up, " +
     "stops making death saves and can act again). " +
     "regainedConsciousness is not a resurrection: the dead cannot be healed and the engine refuses it.",
+  start_combat:
+    "Starts combat: rolls initiative (a d20 plus the creature's initiative modifier) for every participant " +
+    "and sets the turn order. " +
+    "Call it once, at the moment a fight breaks out: someone attacks, or hostile creatures notice the characters " +
+    "and move against them. Do not call it for tense talk or threats that do not turn into a fight. " +
+    "Call it before the first attack of the fight, in the same response. " +
+    "List in participantIds the ids from the game state of every creature that fights right now: " +
+    "the player characters in the scene and the enemies that join. " +
+    "Enemies that are elsewhere, asleep or unaware stay out. " +
+    "A player character at 0 hit points who is still alive takes part: they make death saves on their turns. " +
+    "At least one player character and one enemy, no dead creatures, no repeated ids; " +
+    "the engine refuses it while a combat is already active. " +
+    "On equal initiative totals the order of participantIds is kept: list them in the order you would break ties. " +
+    "The result lists the participants in turn order with their side (player or enemy), roll, modifier and total; " +
+    "after it the game state shows the combat: the order, the round and the active creature. " +
+    "Narrate how the fight begins and who acts first, and let the creatures act in this order.",
+  end_combat:
+    "Ends the active combat. It takes no arguments. " +
+    "Call it when the fight is over: every enemy in it is dead, has fled or has surrendered, " +
+    "or the characters have escaped. Do not call it just because one enemy fell while others still fight. " +
+    "The engine refuses it when no combat is active. " +
+    "The result contains lastRound, the round in which the combat ended; after it the game state shows no combat. " +
+    "Narrate the aftermath.",
 } satisfies Record<ToolName, string>
 
 export const toolDefinitions: ToolDefinition[] = Object.keys(ToolArgsSchemas).map((tool) => {

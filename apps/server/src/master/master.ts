@@ -1,5 +1,13 @@
 import type { ModelProvider, StoryMessage, ToolCall } from "../model/types"
-import { applyDamage, applyHeal, attack, deathSave, rollCheck } from "../engine/engine"
+import {
+  applyDamage,
+  applyHeal,
+  attack,
+  deathSave,
+  endCombat,
+  rollCheck,
+  startCombat,
+} from "../engine/engine"
 import type { Rng } from "../engine/engine"
 import { ToolArgsSchemas } from "@dnd/shared"
 import type { GameState, GameRecord } from "@dnd/shared"
@@ -56,6 +64,26 @@ export function executeTools(tools: ToolCall[], gameState: GameState, rng: Rng):
         if (!applyHealResult.isOk) throw new Error(applyHealResult.errorText)
         draft = applyHealResult.state
         gameRecords.push({ tool: "apply_heal", args: applyHealArgs, event: applyHealResult.event })
+        break
+      }
+      case "start_combat": {
+        const startCombatArgs = ToolArgsSchemas.start_combat.parse(call.args)
+        const startCombatResult = startCombat(draft, startCombatArgs, rng)
+        if (!startCombatResult.isOk) throw new Error(startCombatResult.errorText)
+        draft = startCombatResult.state
+        gameRecords.push({
+          tool: "start_combat",
+          args: startCombatArgs,
+          event: startCombatResult.event,
+        })
+        break
+      }
+      case "end_combat": {
+        const endCombatArgs = ToolArgsSchemas.end_combat.parse(call.args)
+        const endCombatResult = endCombat(draft)
+        if (!endCombatResult.isOk) throw new Error(endCombatResult.errorText)
+        draft = endCombatResult.state
+        gameRecords.push({ tool: "end_combat", args: endCombatArgs, event: endCombatResult.event })
         break
       }
       default: {
