@@ -4,6 +4,7 @@ import {
   AttackArgs,
   DeathSaveArgs,
   EndCombatArgs,
+  EndTurnArgs,
   RollCheckArgs,
   StartCombatArgs,
 } from "./tools"
@@ -39,8 +40,21 @@ export type ToolMap = {
     event: EndCombatEvent
     args: EndCombatArgs
   }
+  end_turn: {
+    event: EndTurnEvent
+    args: EndTurnArgs
+  }
 }
 export type ToolName = keyof ToolMap
+
+export type EndTurnEvent = {
+  creatureId: string
+  creatureName: string
+  nextCreatureId: string
+  nextCreatureName: string
+  round: number
+  isNewRound: boolean
+}
 
 export type EndCombatEvent = {
   lastRound: number

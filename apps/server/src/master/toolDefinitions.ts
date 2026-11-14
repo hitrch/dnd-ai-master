@@ -29,6 +29,7 @@ export const ToolDescriptions = {
     "Use the attacker id, the target id and the id of one of the attacker's own weapons from the game state. " +
     "The engine decides the hit and the damage; never decide them yourself and never use numbers from the player. " +
     "A natural 20 is a critical hit with doubled damage dice; a natural 1 always misses. " +
+    "During combat only the active creature (combat.activeCreatureId) can attack; the engine refuses anyone else. " +
     "The result contains the roll, the total, whether it hit, whether it was critical and, on a hit, the damage " +
     "(each roll, the bonus, the amount, hit points before and after and the outcome); damage is null on a miss. " +
     "Narrate a miss as a miss. " +
@@ -49,6 +50,7 @@ export const ToolDescriptions = {
     "Call it once each time the dying character would act, instead of any action of theirs: " +
     "a character at 0 hit points cannot move, talk, attack or make checks. " +
     "Do not call it for a character who is stable or dead; the engine refuses it. " +
+    "During combat call it only on the character's own turn (combat.activeCreatureId), at most once per turn. " +
     "Use the character id from the game state. " +
     "10 or higher is a success, below 10 is a failure, a natural 1 counts as two failures. " +
     "Three successes make the character stable: still unconscious at 0 hit points, but no longer dying. " +
@@ -88,7 +90,8 @@ export const ToolDescriptions = {
     "On equal initiative totals the order of participantIds is kept: list them in the order you would break ties. " +
     "The result lists the participants in turn order with their side (player or enemy), roll, modifier and total; " +
     "after it the game state shows the combat: the order, the round and the active creature. " +
-    "Narrate how the fight begins and who acts first, and let the creatures act in this order.",
+    "Narrate how the fight begins and who acts first, and let the creatures act in this order, " +
+    "ending each turn with end_turn.",
   end_combat:
     "Ends the active combat. It takes no arguments. " +
     "Call it when the fight is over: every enemy in it is dead, has fled or has surrendered, " +
@@ -96,6 +99,17 @@ export const ToolDescriptions = {
     "The engine refuses it when no combat is active. " +
     "The result contains lastRound, the round in which the combat ended; after it the game state shows no combat. " +
     "Narrate the aftermath.",
+  end_turn:
+    "Ends the turn of the active creature in combat and passes the turn to the next one in the turn order. " +
+    "Call it right after the active creature has done what it does on its turn: an attack, a death save, " +
+    "or anything else such as moving, talking or hiding; a creature that does nothing still ends its turn. " +
+    "Use the id of the active creature from the game state (combat.activeCreatureId); the engine refuses any other id " +
+    "and refuses it when no combat is active. " +
+    "Dead creatures are skipped; a player character at 0 hit points who is still alive gets a turn for the death save. " +
+    "If one side has nobody left who can fight, the engine refuses it: call end_combat instead. " +
+    "The result contains who ended the turn, who acts next, the round and whether a new round has begun. " +
+    "Enemies act on their own turns: let each enemy act, then end its turn, until the turn comes to a player character; " +
+    "then stop and let the player decide.",
 } satisfies Record<ToolName, string>
 
 export const toolDefinitions: ToolDefinition[] = Object.keys(ToolArgsSchemas).map((tool) => {

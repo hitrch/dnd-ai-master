@@ -42,6 +42,11 @@ export type StartCombatArgs = z.infer<typeof StartCombatArgsSchema>
 export const EndCombatArgsSchema = z.object({})
 export type EndCombatArgs = z.infer<typeof EndCombatArgsSchema>
 
+export const EndTurnArgsSchema = z.object({
+  creatureId: z.string(),
+})
+export type EndTurnArgs = z.infer<typeof EndTurnArgsSchema>
+
 export const ToolArgsSchemas = {
   roll_check: RollCheckArgsSchema,
   apply_damage: ApplyDamageArgsSchema,
@@ -50,4 +55,5 @@ export const ToolArgsSchemas = {
   apply_heal: ApplyHealArgsSchema,
   start_combat: StartCombatArgsSchema,
   end_combat: EndCombatArgsSchema,
+  end_turn: EndTurnArgsSchema,
 } satisfies Record<ToolName, z.ZodType>

@@ -5,6 +5,7 @@ import {
   attack,
   deathSave,
   endCombat,
+  endTurn,
   rollCheck,
   startCombat,
 } from "../engine/engine"
@@ -84,6 +85,14 @@ export function executeTools(tools: ToolCall[], gameState: GameState, rng: Rng):
         if (!endCombatResult.isOk) throw new Error(endCombatResult.errorText)
         draft = endCombatResult.state
         gameRecords.push({ tool: "end_combat", args: endCombatArgs, event: endCombatResult.event })
+        break
+      }
+      case "end_turn": {
+        const endTurnArgs = ToolArgsSchemas.end_turn.parse(call.args)
+        const endTurnResult = endTurn(draft, endTurnArgs)
+        if (!endTurnResult.isOk) throw new Error(endTurnResult.errorText)
+        draft = endTurnResult.state
+        gameRecords.push({ tool: "end_turn", args: endTurnArgs, event: endTurnResult.event })
         break
       }
       default: {

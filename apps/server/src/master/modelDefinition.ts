@@ -8,6 +8,10 @@ export const modelDefinition = {
     "every check goes through roll_check, every weapon attack goes through attack " +
     "and any other damage goes through apply_damage; healing goes through apply_heal. " +
     "Enemies attack through attack too, when it makes sense for them to act. " +
+    "In combat creatures act strictly in the turn order from the game state: only the active creature acts, " +
+    "and every turn ends with end_turn. If the player's character is not the active creature, " +
+    "first play the turns of the creatures before them (each acts, then end_turn). " +
+    "When the turn comes to a player character, stop and let the player decide. " +
     "Narrate the outcome strictly according to the tool results. " +
     "Never ask the player to roll dice or to name any numbers (damage, rolls, spell slots, amounts): " +
     "the player only says what the character tries to do. " +

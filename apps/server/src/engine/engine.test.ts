@@ -10,6 +10,7 @@ import {
   deathSave,
   startCombat,
   endCombat,
+  endTurn,
 } from "./engine"
 
 const state = GameStateSchema.parse({
@@ -1056,6 +1057,183 @@ test("start after end: a new combat can begin", () => {
   const r = startCombat(ended.state, { participantIds: ["p1", "e1"] }, fixed(0.5))
   assert.ok(r.isOk)
   assert.equal(r.state.combat?.round, 1)
+})
+
+// ---------- turns ----------
+
+// The crowd in combat with the given order and active creature, round 1
+function inCombat(order: string[], activeCreatureId: string, s: GameState = crowd): GameState {
+  return { ...s, combat: { order, round: 1, activeCreatureId } }
+}
+
+// The crowd with some fields of one creature replaced
+function crowdWith(id: string, patch: Partial<Player>): GameState {
+  return {
+    ...crowd,
+    players: crowd.players.map((p) => (p.id === id ? { ...p, ...patch } : p)),
+    enemies: crowd.enemies.map((e) => (e.id === id ? { ...e, ...patch } : e)),
+  }
+}
+
+test("end turn: passes the turn to the next creature and fills the event", () => {
+  const s = inCombat(["p1", "e1", "p2", "e2"], "p1")
+  const r = endTurn(s, { creatureId: "p1" })
+  assert.ok(r.isOk)
+  assert.deepEqual(r.event, {
+    creatureId: "p1",
+    creatureName: "Арвен",
+    nextCreatureId: "e1",
+    nextCreatureName: "Гоблин-часовой",
+    round: 1,
+    isNewRound: false,
+  })
+  assert.deepEqual(r.state.combat, {
+    order: ["p1", "e1", "p2", "e2"],
+    round: 1,
+    activeCreatureId: "e1",
+  })
+})
+
+test("end turn: after the last creature the order starts over in a new round", () => {
+  const s = inCombat(["p1", "e1", "p2", "e2"], "e2")
+  const r = endTurn(s, { creatureId: "e2" })
+  assert.ok(r.isOk)
+  assert.equal(r.event.nextCreatureId, "p1")
+  assert.equal(r.event.round, 2)
+  assert.equal(r.event.isNewRound, true)
+  assert.equal(r.state.combat?.round, 2)
+  assert.equal(r.state.combat?.activeCreatureId, "p1")
+})
+
+test("end turn: a whole round of turns comes back to the first creature", () => {
+  let s = inCombat(["p1", "e1", "p2", "e2"], "p1")
+  for (const id of ["p1", "e1", "p2", "e2"]) {
+    const r = endTurn(s, { creatureId: id })
+    assert.ok(r.isOk, id)
+    s = r.state
+  }
+  assert.deepEqual(s.combat, { order: ["p1", "e1", "p2", "e2"], round: 2, activeCreatureId: "p1" })
+})
+
+test("end turn: an enemy at 0 HP is skipped", () => {
+  const s = inCombat(["p1", "e1", "p2", "e2"], "p1", crowdWith("e1", { hp: 0 }))
+  const r = endTurn(s, { creatureId: "p1" })
+  assert.ok(r.isOk)
+  assert.equal(r.event.nextCreatureId, "p2")
+  assert.equal(r.event.isNewRound, false)
+})
+
+test("end turn: a dead player is skipped, a down but living player gets the turn", () => {
+  const dead = inCombat(["e1", "p1", "p2"], "e1", crowdWith("p1", { hp: 0, saveRollFails: 3 }))
+  const skipped = endTurn(dead, { creatureId: "e1" })
+  assert.ok(skipped.isOk)
+  assert.equal(skipped.event.nextCreatureId, "p2")
+
+  const down = inCombat(["e1", "p1", "p2"], "e1", crowdWith("p1", { hp: 0, saveRollFails: 2 }))
+  const kept = endTurn(down, { creatureId: "e1" })
+  assert.ok(kept.isOk)
+  assert.equal(kept.event.nextCreatureId, "p1")
+})
+
+test("end turn: skipping past the end of the order starts a new round", () => {
+  // e2 is last and dead, so the turn of p1 goes over the end to e1
+  const s = inCombat(["e1", "p1", "e2"], "p1", crowdWith("e2", { hp: 0 }))
+  const r = endTurn(s, { creatureId: "p1" })
+  assert.ok(r.isOk)
+  assert.equal(r.event.nextCreatureId, "e1")
+  assert.equal(r.event.round, 2)
+  assert.equal(r.event.isNewRound, true)
+})
+
+test("end turn: a creature that died on its own turn can still end it", () => {
+  // p1 failed the third death save on its turn; p2 still fights
+  const s = inCombat(["p1", "e1", "p2"], "p1", crowdWith("p1", { hp: 0, saveRollFails: 3 }))
+  const r = endTurn(s, { creatureId: "p1" })
+  assert.ok(r.isOk)
+  assert.equal(r.event.nextCreatureId, "e1")
+})
+
+test("end turn: does not mutate the original state and keeps the creatures", () => {
+  const s = inCombat(["p1", "e1"], "p1")
+  const before = structuredClone(s)
+  const r = endTurn(s, { creatureId: "p1" })
+  assert.ok(r.isOk)
+  assert.deepEqual(s, before)
+  assert.deepEqual(r.state.players, s.players)
+  assert.deepEqual(r.state.enemies, s.enemies)
+})
+
+test("end turn: refusals", () => {
+  const cases: [string, GameState, string][] = [
+    ["no combat", crowd, "p1"],
+    ["not the active creature", inCombat(["p1", "e1"], "p1"), "e1"],
+    ["unknown id", inCombat(["p1", "e1"], "p1"), "orc1"],
+    ["unknown id in the order", inCombat(["p1", "orc1", "e1"], "p1"), "p1"],
+    ["no enemy left", inCombat(["p1", "e1"], "p1", crowdWith("e1", { hp: 0 })), "p1"],
+    [
+      "no player left",
+      inCombat(["e1", "p1"], "e1", crowdWith("p1", { hp: 0, saveRollFails: 3 })),
+      "e1",
+    ],
+  ]
+  for (const [name, s, creatureId] of cases) {
+    const r = endTurn(s, { creatureId })
+    assert.equal(r.isOk, false, name)
+    assert.ok(!r.isOk && r.errorText.length > 0, name)
+  }
+})
+
+test("end turn: when one side is gone the error points to end_combat", () => {
+  const s = inCombat(["p1", "e1", "e2"], "p1", {
+    ...crowd,
+    enemies: crowd.enemies.map((e) => ({ ...e, hp: 0 })),
+  })
+  const r = endTurn(s, { creatureId: "p1" })
+  assert.equal(r.isOk, false)
+  assert.match(r.errorText, /end_combat/)
+})
+
+test("end turn args schema: creature id is required", () => {
+  const schema = ToolArgsSchemas.end_turn
+  assert.equal(schema.safeParse({ creatureId: "p1" }).success, true)
+  assert.equal(schema.safeParse({}).success, false)
+  assert.equal(schema.safeParse({ creatureId: 1 }).success, false)
+})
+
+test("turns: in combat only the active creature can attack, nothing is rolled otherwise", () => {
+  const s = inCombat(["p1", "e1"], "e1")
+  const r = attack(s, daggerAtGoblin, sequence().rng)
+  assert.equal(r.isOk, false)
+  assert.match(r.errorText, /e1/)
+
+  const own = attack(inCombat(["p1", "e1"], "p1"), daggerAtGoblin, sequence(0.5, 0.5).rng)
+  assert.ok(own.isOk)
+})
+
+test("turns: outside combat anyone can attack, including an ally", () => {
+  const r = attack(crowd, { attackerId: "p2", weaponId: "dagger", targetId: "p1" }, fixed(0.5))
+  assert.ok(r.isOk)
+})
+
+test("turns: in combat a death save only on the character's own turn", () => {
+  const down = crowdWith("p1", { hp: 0 })
+  const refused = deathSave(inCombat(["p1", "e1"], "e1", down), saveP1, sequence().rng)
+  assert.equal(refused.isOk, false)
+
+  const own = deathSave(inCombat(["p1", "e1"], "p1", down), saveP1, fixed(0.5))
+  assert.ok(own.isOk)
+})
+
+test("turns: a second death save on the same turn needs end_turn in between", () => {
+  // the model once called death_save twice in one message; now the second one is
+  // still the same turn, so the guard is end_turn, not death_save itself
+  const s = inCombat(["p1", "e1"], "p1", crowdWith("p1", { hp: 0 }))
+  const first = deathSave(s, saveP1, fixed(0.5))
+  assert.ok(first.isOk)
+  const ended = endTurn(first.state, { creatureId: "p1" })
+  assert.ok(ended.isOk)
+  const second = deathSave(ended.state, saveP1, sequence().rng)
+  assert.equal(second.isOk, false)
 })
 
 test("state schema: combat is required, null or a valid combat", () => {

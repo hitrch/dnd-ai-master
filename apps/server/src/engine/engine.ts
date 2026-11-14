@@ -17,6 +17,7 @@ import {
   HealEvent,
   StartCombatArgs,
   CombatParticipant,
+  EndTurnArgs,
 } from "@dnd/shared"
 
 // Random number generator in [0, 1). Math.random in the game, replaced in tests.
@@ -52,22 +53,29 @@ function isCharacter(creature: Character | Enemy): creature is Character {
   return Object.hasOwn(creature, "saveRollFails")
 }
 
+function isCreatureDead(creature: Character | Enemy): boolean {
+  if (isCharacter(creature)) return isPlayerDead(creature)
+  return creature.hp === 0
+}
+
 function isPlayerDead(player: Character): boolean {
   return player.saveRollFails === 3
 }
 
 function getTargetError(target: Character | Enemy): string | null {
-  if (isCharacter(target)) {
-    if (isPlayerDead(target)) return `${target.name} is already dead`
-  } else {
-    if (target.hp === 0) return `${target.name} is already dead`
-  }
-
+  if (isCreatureDead(target)) return `${target.name} is already dead`
   return null
 }
 
 function findCreatureById(state: GameState, id: string): Character | Enemy | undefined {
   return state.players.find((p) => p.id === id) ?? state.enemies.find((e) => e.id === id)
+}
+
+function areBothSidesInCombat(list: (Character | Enemy)[]): boolean {
+  return (
+    list.some((c) => isCharacter(c) && !isCreatureDead(c)) &&
+    list.some((c) => !isCharacter(c) && !isCreatureDead(c))
+  )
 }
 
 function rollAndApplyDamage(
@@ -261,6 +269,11 @@ export function attack(
 ): ReturnResult<"attack"> {
   const attacker = findCreatureById(state, args.attackerId)
   if (!attacker) return { isOk: false, errorText: `Unknown attacker with id: ${args.attackerId}` }
+  if (state.combat && attacker.id !== state.combat.activeCreatureId)
+    return {
+      isOk: false,
+      errorText: `Attacker with id ${attacker.id} is not the active one ${state.combat.activeCreatureId}`,
+    }
 
   const target = findCreatureById(state, args.targetId)
   if (!target) return { isOk: false, errorText: `Unknown target with id: ${args.targetId}` }
@@ -318,6 +331,11 @@ export function deathSave(
     return { isOk: false, errorText: `Character is dead: ${character.name}` }
   if (character.isStabilizedAfterSave)
     return { isOk: false, errorText: `Character ${character.name} is stabilized` }
+  if (state.combat && character.id !== state.combat.activeCreatureId)
+    return {
+      isOk: false,
+      errorText: `Player with id ${character.id} is not the active one ${state.combat.activeCreatureId}`,
+    }
 
   const roll = rollD(rng, 20)
   let currentSuccesses = character.saveRollSuccesses
@@ -402,7 +420,7 @@ export function startCombat(
   if (uniqueParticipants.size !== creatures.length)
     return { isOk: false, errorText: "Duplicate participants" }
 
-  if (!creatures.some((c) => isCharacter(c)) || !creatures.some((c) => !isCharacter(c)))
+  if (!areBothSidesInCombat(creatures))
     return {
       isOk: false,
       errorText: "Combat needs at least one player character and at least one enemy",
@@ -448,6 +466,71 @@ export function endCombat(state: GameState): ReturnResult<"end_combat"> {
     state: {
       ...state,
       combat: null,
+    },
+  }
+}
+
+export function endTurn(state: GameState, args: EndTurnArgs): ReturnResult<"end_turn"> {
+  if (!state.combat) return { isOk: false, errorText: `No combat is active` }
+  if (args.creatureId !== state.combat.activeCreatureId)
+    return {
+      isOk: false,
+      errorText: `Creature with id: ${args.creatureId} is not current active creature in turn`,
+    }
+
+  const currentActiveCreatureIndex = state.combat.order.findIndex((id) => id === args.creatureId)
+  const creatures = state.combat.order.map((id) => findCreatureById(state, id)).filter((c) => !!c)
+
+  if (creatures.length !== state.combat.order.length)
+    return { isOk: false, errorText: "Unidentified element in combat" }
+  if (!areBothSidesInCombat(creatures))
+    return {
+      isOk: false,
+      errorText: "One side has no creatures left in combat. Call end_combat to finish the combat",
+    }
+  const currentActiveCreature = creatures[currentActiveCreatureIndex]
+  if (!currentActiveCreature)
+    return { isOk: false, errorText: `No creature found with id ${args.creatureId}` }
+
+  let nextActiveCreature
+  let round = state.combat.round
+  let isNewRound = false
+  for (let i = 1; i < creatures.length; i++) {
+    const currentIndex = (i + currentActiveCreatureIndex) % creatures.length
+    const creature = creatures[currentIndex]
+    if (!isCreatureDead(creature)) {
+      nextActiveCreature = creature
+      if (currentIndex < currentActiveCreatureIndex) {
+        round++
+        isNewRound = true
+      }
+      break
+    }
+  }
+
+  if (!nextActiveCreature)
+    return {
+      isOk: false,
+      errorText: "No creatures left in combat. Call end_combat to finish the combat",
+    }
+
+  return {
+    isOk: true,
+    event: {
+      creatureId: currentActiveCreature.id,
+      creatureName: currentActiveCreature.name,
+      nextCreatureId: nextActiveCreature.id,
+      nextCreatureName: nextActiveCreature.name,
+      round,
+      isNewRound,
+    },
+    state: {
+      ...state,
+      combat: {
+        ...state.combat,
+        round,
+        activeCreatureId: nextActiveCreature.id,
+      },
     },
   }
 }

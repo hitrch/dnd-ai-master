@@ -192,8 +192,65 @@ test("start_combat then end_combat in one round of calls", () => {
   )
 })
 
+test("end_turn call is executed by the engine and recorded", () => {
+  const fighting = { ...state, combat: { order: ["p1", "e1"], round: 1, activeCreatureId: "p1" } }
+  const r = executeTools([{ name: "end_turn", args: { creatureId: "p1" } }], fighting, fixed(0.5))
+  const rec = r.records[0]
+  assert.ok(rec.tool === "end_turn")
+  assert.deepEqual(rec.args, { creatureId: "p1" })
+  assert.equal(rec.event.nextCreatureId, "e1")
+  assert.equal(r.state.combat?.activeCreatureId, "e1")
+})
+
+test("end_turn refused by the engine throws", () => {
+  assert.throws(() =>
+    executeTools([{ name: "end_turn", args: { creatureId: "p1" } }], state, fixed(0.5)),
+  )
+})
+
+test("a full round in one batch: attack, end_turn, enemy attack, end_turn", () => {
+  // every d20 rolls 11: 11 + 5 = 16 vs AC 15 and 11 + 4 = 15 vs AC 14, both attacks hit
+  const scimitar = {
+    id: "scimitar",
+    name: "Скимитар",
+    attackBonus: 4,
+    damage: { diceCount: 1, diceSides: 6 as const, bonus: 2 },
+  }
+  const fighting = {
+    ...state,
+    enemies: [{ ...state.enemies[0], weapons: [scimitar] }],
+    combat: { order: ["p1", "e1"], round: 1, activeCreatureId: "p1" },
+  }
+  const r = executeTools(
+    [
+      { name: "attack", args: { attackerId: "p1", weaponId: "dagger", targetId: "e1" } },
+      { name: "end_turn", args: { creatureId: "p1" } },
+      { name: "attack", args: { attackerId: "e1", weaponId: "scimitar", targetId: "p1" } },
+      { name: "end_turn", args: { creatureId: "e1" } },
+    ],
+    fighting,
+    fixed(0.5),
+  )
+  assert.deepEqual(r.state.combat, { order: ["p1", "e1"], round: 2, activeCreatureId: "p1" })
+  assert.equal(r.state.enemies[0].hp, 1)
+  assert.equal(r.state.players[0].hp, 6)
+})
+
+test("attack out of turn in combat throws", () => {
+  const fighting = { ...state, combat: { order: ["p1", "e1"], round: 1, activeCreatureId: "e1" } }
+  assert.throws(
+    () =>
+      executeTools(
+        [{ name: "attack", args: { attackerId: "p1", weaponId: "dagger", targetId: "e1" } }],
+        fighting,
+        fixed(0.5),
+      ),
+    /e1/,
+  )
+})
+
 test("combat tools are described to the model", () => {
-  for (const name of ["start_combat", "end_combat"]) {
+  for (const name of ["start_combat", "end_combat", "end_turn"]) {
     const definition = toolDefinitions.find((d) => d.name === name)
     assert.ok(definition, name)
     assert.ok(definition.description.length > 0, name)
@@ -428,6 +485,7 @@ test("handleMessage: model is offered every tool", async () => {
     "attack",
     "death_save",
     "end_combat",
+    "end_turn",
     "roll_check",
     "start_combat",
   ])
