@@ -6,7 +6,10 @@ export interface ActionStore {
   cancelAction: (roomId: string) => Promise<void>
 }
 
+export type ToolResult =
+  ({ isOk: true } & GameRecord) | { isOk: false; tool: string; errorText: string }
+
 export type ToolRunResult = {
+  results: ToolResult[]
   state: GameState
-  records: GameRecord[]
 }

@@ -6,7 +6,7 @@ import { executeTools, Master } from "./master"
 import { modelDefinition } from "./modelDefinition"
 import { toolDefinitions } from "./toolDefinitions"
 import type { ModelProvider, ModelResponse, StoryMessage, ToolDefinition } from "../model/types"
-import type { ActionStore } from "../types"
+import type { ActionStore, ToolResult } from "../types"
 
 const state = GameStateSchema.parse({
   location: "Подножие башни",
@@ -53,13 +53,21 @@ const fixed = (v: number) => () => v
 // 1d4 with rng = 0.5 deals 3 damage
 const d4 = { diceCount: 1, diceSides: 4, bonus: 0 }
 
-test("empty list returns the same state and no records", () => {
+// Asserts that the result is a failure and returns its error text
+function failureText(r: ToolResult | undefined, tool: string): string {
+  assert.ok(r, "no result")
+  assert.ok(!r.isOk, "expected a failed result")
+  assert.equal(r.tool, tool)
+  return r.errorText
+}
+
+test("empty list returns the same state and no results", () => {
   const r = executeTools([], state, fixed(0.5))
   assert.equal(r.state, state)
-  assert.deepEqual(r.records, [])
+  assert.deepEqual(r.results, [])
 })
 
-test("records follow the order of calls", () => {
+test("results follow the order of calls", () => {
   const r = executeTools(
     [
       { name: "roll_check", args: { characterId: "p1", skill: "stealth", dc: 10 } },
@@ -69,19 +77,20 @@ test("records follow the order of calls", () => {
     fixed(0.5),
   )
   assert.deepEqual(
-    r.records.map((rec) => rec.tool),
+    r.results.map((res) => res.tool),
     ["roll_check", "apply_damage"],
   )
+  assert.ok(r.results.every((res) => res.isOk))
 })
 
-test("record contains parsed args and the engine event", () => {
+test("result contains parsed args and the engine event", () => {
   const r = executeTools(
     [{ name: "apply_damage", args: { targetId: "e1", ...d4 } }],
     state,
     fixed(0.5),
   )
-  const rec = r.records[0]
-  assert.ok(rec.tool === "apply_damage")
+  const rec = r.results[0]
+  assert.ok(rec.isOk && rec.tool === "apply_damage")
   assert.deepEqual(rec.args, { targetId: "e1", ...d4 })
   assert.equal(rec.event.hpBefore, 7)
   assert.equal(rec.event.hpAfter, 4)
@@ -91,8 +100,8 @@ test("attack call is executed by the engine and recorded", () => {
   // d20 = 11, 11 + 5 = 16 vs AC 15; d4 = 3, 3 + 3 = 6
   const args = { attackerId: "p1", weaponId: "dagger", targetId: "e1" }
   const r = executeTools([{ name: "attack", args }], state, fixed(0.5))
-  const rec = r.records[0]
-  assert.ok(rec.tool === "attack")
+  const rec = r.results[0]
+  assert.ok(rec.isOk && rec.tool === "attack")
   assert.deepEqual(rec.args, args)
   assert.equal(rec.event.hasHit, true)
   assert.equal(rec.event.damage?.hpAfter, 1)
@@ -103,18 +112,18 @@ test("death_save call is executed by the engine and recorded", () => {
   // d20 = 11: a success
   const down = { ...state, players: [{ ...state.players[0], hp: 0 }] }
   const r = executeTools([{ name: "death_save", args: { characterId: "p1" } }], down, fixed(0.5))
-  const rec = r.records[0]
-  assert.ok(rec.tool === "death_save")
+  const rec = r.results[0]
+  assert.ok(rec.isOk && rec.tool === "death_save")
   assert.deepEqual(rec.args, { characterId: "p1" })
   assert.equal(rec.event.outcome, "success")
   assert.equal(r.state.players[0].saveRollSuccesses, 1)
 })
 
-test("death_save refused by the engine throws", () => {
+test("death_save refused by the engine returns a failed result", () => {
   // the character is not down
-  assert.throws(() =>
-    executeTools([{ name: "death_save", args: { characterId: "p1" } }], state, fixed(0.5)),
-  )
+  const r = executeTools([{ name: "death_save", args: { characterId: "p1" } }], state, fixed(0.5))
+  assert.ok(failureText(r.results[0], "death_save").length > 0)
+  assert.equal(r.state, state)
 })
 
 test("death_save is described to the model", () => {
@@ -128,8 +137,8 @@ test("apply_heal call is executed by the engine and recorded", () => {
   const down = { ...state, players: [{ ...state.players[0], hp: 0, saveRollFails: 2 }] }
   const args = { targetId: "p1", ...d4 }
   const r = executeTools([{ name: "apply_heal", args }], down, fixed(0.5))
-  const rec = r.records[0]
-  assert.ok(rec.tool === "apply_heal")
+  const rec = r.results[0]
+  assert.ok(rec.isOk && rec.tool === "apply_heal")
   assert.deepEqual(rec.args, args)
   assert.equal(rec.event.hpAfter, 3)
   assert.equal(rec.event.outcome, "regainedConsciousness")
@@ -141,8 +150,8 @@ test("start_combat call is executed by the engine and recorded", () => {
   // p1 11+3=14, e1 11+2=13
   const args = { participantIds: ["e1", "p1"] }
   const r = executeTools([{ name: "start_combat", args }], state, fixed(0.5))
-  const rec = r.records[0]
-  assert.ok(rec.tool === "start_combat")
+  const rec = r.results[0]
+  assert.ok(rec.isOk && rec.tool === "start_combat")
   assert.deepEqual(rec.args, args)
   assert.deepEqual(
     rec.event.participantsOrder.map((p) => p.id),
@@ -151,29 +160,30 @@ test("start_combat call is executed by the engine and recorded", () => {
   assert.deepEqual(r.state.combat, { order: ["p1", "e1"], round: 1, activeCreatureId: "p1" })
 })
 
-test("start_combat refused by the engine throws", () => {
+test("start_combat refused by the engine returns a failed result", () => {
   // a repeated id passes the schema but not the engine
-  assert.throws(() =>
-    executeTools(
-      [{ name: "start_combat", args: { participantIds: ["e1", "e1"] } }],
-      state,
-      fixed(0.5),
-    ),
+  const r = executeTools(
+    [{ name: "start_combat", args: { participantIds: ["e1", "e1"] } }],
+    state,
+    fixed(0.5),
   )
+  failureText(r.results[0], "start_combat")
+  assert.equal(r.state.combat, null)
 })
 
 test("end_combat call is executed by the engine and recorded, extra args are dropped", () => {
   const fighting = { ...state, combat: { order: ["p1", "e1"], round: 2, activeCreatureId: "p1" } }
   const r = executeTools([{ name: "end_combat", args: { reason: "fled" } }], fighting, fixed(0.5))
-  const rec = r.records[0]
-  assert.ok(rec.tool === "end_combat")
+  const rec = r.results[0]
+  assert.ok(rec.isOk && rec.tool === "end_combat")
   assert.deepEqual(rec.args, {})
   assert.deepEqual(rec.event, { lastRound: 2 })
   assert.equal(r.state.combat, null)
 })
 
-test("end_combat refused by the engine throws", () => {
-  assert.throws(() => executeTools([{ name: "end_combat", args: {} }], state, fixed(0.5)))
+test("end_combat refused by the engine returns a failed result", () => {
+  const r = executeTools([{ name: "end_combat", args: {} }], state, fixed(0.5))
+  failureText(r.results[0], "end_combat")
 })
 
 test("start_combat then end_combat in one round of calls", () => {
@@ -187,7 +197,7 @@ test("start_combat then end_combat in one round of calls", () => {
   )
   assert.equal(r.state.combat, null)
   assert.deepEqual(
-    r.records.map((rec) => rec.tool),
+    r.results.map((res) => res.tool),
     ["start_combat", "end_combat"],
   )
 })
@@ -195,27 +205,27 @@ test("start_combat then end_combat in one round of calls", () => {
 test("end_turn call is executed by the engine and recorded", () => {
   const fighting = { ...state, combat: { order: ["p1", "e1"], round: 1, activeCreatureId: "p1" } }
   const r = executeTools([{ name: "end_turn", args: { creatureId: "p1" } }], fighting, fixed(0.5))
-  const rec = r.records[0]
-  assert.ok(rec.tool === "end_turn")
+  const rec = r.results[0]
+  assert.ok(rec.isOk && rec.tool === "end_turn")
   assert.deepEqual(rec.args, { creatureId: "p1" })
   assert.equal(rec.event.nextCreatureId, "e1")
   assert.equal(r.state.combat?.activeCreatureId, "e1")
 })
 
-test("end_turn refused by the engine throws", () => {
-  assert.throws(() =>
-    executeTools([{ name: "end_turn", args: { creatureId: "p1" } }], state, fixed(0.5)),
-  )
+test("end_turn refused by the engine returns a failed result", () => {
+  const r = executeTools([{ name: "end_turn", args: { creatureId: "p1" } }], state, fixed(0.5))
+  failureText(r.results[0], "end_turn")
 })
+
+const scimitar = {
+  id: "scimitar",
+  name: "Скимитар",
+  attackBonus: 4,
+  damage: { diceCount: 1, diceSides: 6 as const, bonus: 2 },
+}
 
 test("a full round in one batch: attack, end_turn, enemy attack, end_turn", () => {
   // every d20 rolls 11: 11 + 5 = 16 vs AC 15 and 11 + 4 = 15 vs AC 14, both attacks hit
-  const scimitar = {
-    id: "scimitar",
-    name: "Скимитар",
-    attackBonus: 4,
-    damage: { diceCount: 1, diceSides: 6 as const, bonus: 2 },
-  }
   const fighting = {
     ...state,
     enemies: [{ ...state.enemies[0], weapons: [scimitar] }],
@@ -236,17 +246,15 @@ test("a full round in one batch: attack, end_turn, enemy attack, end_turn", () =
   assert.equal(r.state.players[0].hp, 6)
 })
 
-test("attack out of turn in combat throws", () => {
+test("attack out of turn in combat returns a failed result naming the active creature", () => {
   const fighting = { ...state, combat: { order: ["p1", "e1"], round: 1, activeCreatureId: "e1" } }
-  assert.throws(
-    () =>
-      executeTools(
-        [{ name: "attack", args: { attackerId: "p1", weaponId: "dagger", targetId: "e1" } }],
-        fighting,
-        fixed(0.5),
-      ),
-    /e1/,
+  const r = executeTools(
+    [{ name: "attack", args: { attackerId: "p1", weaponId: "dagger", targetId: "e1" } }],
+    fighting,
+    fixed(0.5),
   )
+  assert.match(failureText(r.results[0], "attack"), /e1/)
+  assert.equal(r.state.enemies[0].hp, 7)
 })
 
 test("combat tools are described to the model", () => {
@@ -258,12 +266,16 @@ test("combat tools are described to the model", () => {
   }
 })
 
-test("apply_heal refused by the engine throws", () => {
+test("apply_heal refused by the engine returns a failed result", () => {
   // the goblin at 0 HP is dead
   const deadGoblin = { ...state, enemies: [{ ...state.enemies[0], hp: 0 }] }
-  assert.throws(() =>
-    executeTools([{ name: "apply_heal", args: { targetId: "e1", ...d4 } }], deadGoblin, fixed(0.5)),
+  const r = executeTools(
+    [{ name: "apply_heal", args: { targetId: "e1", ...d4 } }],
+    deadGoblin,
+    fixed(0.5),
   )
+  failureText(r.results[0], "apply_heal")
+  assert.equal(r.state.enemies[0].hp, 0)
 })
 
 test("apply_heal is described to the model", () => {
@@ -272,19 +284,20 @@ test("apply_heal is described to the model", () => {
   assert.ok(definition.description.length > 0)
 })
 
-test("attack with an invalid args shape throws", () => {
-  assert.throws(() =>
-    executeTools(
-      [{ name: "attack", args: { attackerId: "p1", targetId: "e1" } }],
-      state,
-      fixed(0.5),
-    ),
+test("attack with an invalid args shape returns a failed result naming the field", () => {
+  const r = executeTools(
+    [{ name: "attack", args: { attackerId: "p1", targetId: "e1" } }],
+    state,
+    fixed(0.5),
   )
+  assert.match(failureText(r.results[0], "attack"), /weaponId/)
+  assert.equal(r.state, state)
 })
 
-test("attack refused by the engine throws its error text", () => {
+test("attack refused by the engine returns its error text", () => {
   const args = { attackerId: "p1", weaponId: "scimitar", targetId: "e1" }
-  assert.throws(() => executeTools([{ name: "attack", args }], state, fixed(0.5)), /scimitar/)
+  const r = executeTools([{ name: "attack", args }], state, fixed(0.5))
+  assert.match(failureText(r.results[0], "attack"), /scimitar/)
 })
 
 test("rng is passed to the engine", () => {
@@ -293,8 +306,8 @@ test("rng is passed to the engine", () => {
     state,
     fixed(0.999),
   )
-  const rec = r.records[0]
-  assert.ok(rec.tool === "roll_check")
+  const rec = r.results[0]
+  assert.ok(rec.isOk && rec.tool === "roll_check")
   assert.equal(rec.event.roll, 20)
   assert.equal(rec.event.total, 25)
   assert.equal(rec.event.success, true)
@@ -309,8 +322,8 @@ test("each call sees the state produced by the previous one", () => {
     state,
     fixed(0.5),
   )
-  const second = r.records[1]
-  assert.ok(second.tool === "apply_damage")
+  const second = r.results[1]
+  assert.ok(second.isOk && second.tool === "apply_damage")
   assert.equal(second.event.hpBefore, 4)
   assert.equal(second.event.hpAfter, 1)
   assert.equal(r.state.enemies[0].hp, 1)
@@ -322,8 +335,8 @@ test("rng is passed to the engine for damage", () => {
     state,
     fixed(0),
   )
-  const rec = r.records[0]
-  assert.ok(rec.tool === "apply_damage")
+  const rec = r.results[0]
+  assert.ok(rec.isOk && rec.tool === "apply_damage")
   assert.deepEqual(rec.event.rolls, [1])
   assert.equal(rec.event.amount, 1)
 })
@@ -340,51 +353,147 @@ test("input state is not mutated", () => {
   assert.equal(state.enemies[0].hp, 7)
 })
 
-test("unknown tool name throws and mentions the name", () => {
-  assert.throws(() => executeTools([{ name: "heal", args: {} }], state, fixed(0.5)), /heal/)
+test("unknown tool name returns a failed result that mentions the name", () => {
+  const r = executeTools([{ name: "heal", args: {} }], state, fixed(0.5))
+  assert.match(failureText(r.results[0], "heal"), /heal/)
 })
 
 test("inherited object property name is not accepted as a tool", () => {
-  assert.throws(() => executeTools([{ name: "toString", args: {} }], state, fixed(0.5)), /toString/)
+  const r = executeTools([{ name: "toString", args: {} }], state, fixed(0.5))
+  assert.match(failureText(r.results[0], "toString"), /toString/)
 })
 
 test("invalid args are rejected before the engine", () => {
-  assert.throws(() =>
-    executeTools(
-      [{ name: "roll_check", args: { characterId: "p1", skill: "stealth", dc: 100 } }],
-      state,
-      fixed(0.5),
-    ),
+  // dc above the schema limit; the rng would make the check succeed if the engine ran
+  const check = executeTools(
+    [{ name: "roll_check", args: { characterId: "p1", skill: "stealth", dc: 100 } }],
+    state,
+    fixed(0.999),
   )
-  assert.throws(() =>
-    executeTools([{ name: "apply_damage", args: { targetId: "e1" } }], state, fixed(0.5)),
+  assert.match(failureText(check.results[0], "roll_check"), /dc/)
+
+  const damage = executeTools(
+    [{ name: "apply_damage", args: { targetId: "e1" } }],
+    state,
+    fixed(0.5),
   )
+  failureText(damage.results[0], "apply_damage")
+  assert.equal(damage.state, state)
 })
 
-test("engine error throws with the engine error text", () => {
-  assert.throws(
-    () =>
-      executeTools(
-        [{ name: "apply_damage", args: { targetId: "ghost", ...d4 } }],
-        state,
-        fixed(0.5),
-      ),
-    /ghost/,
+test("engine error returns a failed result with the engine error text", () => {
+  const r = executeTools(
+    [{ name: "apply_damage", args: { targetId: "ghost", ...d4 } }],
+    state,
+    fixed(0.5),
   )
+  assert.match(failureText(r.results[0], "apply_damage"), /ghost/)
+  assert.equal(r.state, state)
 })
 
-test("error in the middle of the list aborts the run and leaves the input intact", () => {
-  assert.throws(() =>
-    executeTools(
-      [
-        { name: "apply_damage", args: { targetId: "e1", ...d4 } },
-        { name: "apply_damage", args: { targetId: "ghost", ...d4 } },
-      ],
-      state,
-      fixed(0.5),
-    ),
+// ---------- failure in a batch ----------
+
+test("calls after a failed one are skipped, every call still gets a result", () => {
+  const r = executeTools(
+    [
+      { name: "apply_damage", args: { targetId: "ghost", ...d4 } },
+      { name: "apply_damage", args: { targetId: "e1", ...d4 } },
+      { name: "roll_check", args: { characterId: "p1", skill: "stealth", dc: 10 } },
+    ],
+    state,
+    fixed(0.5),
   )
+  assert.equal(r.results.length, 3)
+  assert.match(failureText(r.results[0], "apply_damage"), /ghost/)
+  assert.match(failureText(r.results[1], "apply_damage"), /skipped/)
+  assert.match(failureText(r.results[2], "roll_check"), /skipped/)
+  assert.equal(r.state.enemies[0].hp, 7)
+})
+
+test("successful calls before a failure keep their effect on the state", () => {
+  const r = executeTools(
+    [
+      { name: "apply_damage", args: { targetId: "e1", ...d4 } },
+      { name: "apply_damage", args: { targetId: "ghost", ...d4 } },
+      { name: "apply_damage", args: { targetId: "e1", ...d4 } },
+    ],
+    state,
+    fixed(0.5),
+  )
+  assert.equal(r.results[0].isOk, true)
+  failureText(r.results[1], "apply_damage")
+  assert.match(failureText(r.results[2], "apply_damage"), /skipped/)
+  assert.equal(r.state.enemies[0].hp, 4)
   assert.equal(state.enemies[0].hp, 7)
+})
+
+test("after a failed attack the next end_turn does not pass the turn", () => {
+  // p1's turn, but the dagger id is wrong: the attack fails, end_turn must not run
+  const fighting = { ...state, combat: { order: ["p1", "e1"], round: 1, activeCreatureId: "p1" } }
+  const r = executeTools(
+    [
+      { name: "attack", args: { attackerId: "p1", weaponId: "sword", targetId: "e1" } },
+      { name: "end_turn", args: { creatureId: "p1" } },
+    ],
+    fighting,
+    fixed(0.5),
+  )
+  failureText(r.results[0], "attack")
+  assert.match(failureText(r.results[1], "end_turn"), /skipped/)
+  assert.equal(r.state.combat?.activeCreatureId, "p1")
+})
+
+test("an unknown tool after a failure is reported as skipped", () => {
+  const r = executeTools(
+    [
+      { name: "end_combat", args: {} },
+      { name: "heal", args: {} },
+    ],
+    state,
+    fixed(0.5),
+  )
+  failureText(r.results[0], "end_combat")
+  assert.match(failureText(r.results[1], "heal"), /skipped/)
+})
+
+test("an invalid args failure also skips the rest", () => {
+  const r = executeTools(
+    [
+      { name: "attack", args: { attackerId: "p1", targetId: "e1" } },
+      { name: "apply_damage", args: { targetId: "e1", ...d4 } },
+    ],
+    state,
+    fixed(0.5),
+  )
+  failureText(r.results[0], "attack")
+  assert.match(failureText(r.results[1], "apply_damage"), /skipped/)
+  assert.equal(r.state.enemies[0].hp, 7)
+})
+
+test("the model can fix its mistake in the next round: end_turn, then attack", () => {
+  // the goblin's turn; the model first attacks for the player, then passes the turn correctly
+  const fighting = {
+    ...state,
+    enemies: [{ ...state.enemies[0], weapons: [scimitar] }],
+    combat: { order: ["e1", "p1"], round: 1, activeCreatureId: "e1" },
+  }
+  const wrong = executeTools(
+    [{ name: "attack", args: { attackerId: "p1", weaponId: "dagger", targetId: "e1" } }],
+    fighting,
+    fixed(0.5),
+  )
+  failureText(wrong.results[0], "attack")
+
+  const fixedBatch = executeTools(
+    [
+      { name: "end_turn", args: { creatureId: "e1" } },
+      { name: "attack", args: { attackerId: "p1", weaponId: "dagger", targetId: "e1" } },
+    ],
+    wrong.state,
+    fixed(0.5),
+  )
+  assert.ok(fixedBatch.results.every((res) => res.isOk))
+  assert.equal(fixedBatch.state.enemies[0].hp, 1)
 })
 
 // ---------- Master.handleMessage ----------
@@ -570,9 +679,9 @@ test("handleMessage: model sees its tool calls and their results in the next rou
   assert.deepEqual(msgs[1], damage("e1"))
   const results = msgs[2]
   assert.ok(results.messageType === "tool_results")
-  assert.equal(results.records.length, 1)
-  const rec = results.records[0]
-  assert.ok(rec.tool === "apply_damage")
+  assert.equal(results.results.length, 1)
+  const rec = results.results[0]
+  assert.ok(rec.isOk && rec.tool === "apply_damage")
   assert.equal(rec.event.hpBefore, 7)
   assert.equal(rec.event.hpAfter, 4)
 })
@@ -601,8 +710,8 @@ test("handleMessage: rng from the constructor reaches the engine", async () => {
 
   const results = calls[1].messages[2]
   assert.ok(results.messageType === "tool_results")
-  const rec = results.records[0]
-  assert.ok(rec.tool === "roll_check")
+  const rec = results.results[0]
+  assert.ok(rec.isOk && rec.tool === "roll_check")
   assert.equal(rec.event.roll, 20)
 })
 
@@ -623,12 +732,58 @@ test("handleMessage: history persists between messages, including the model's re
   assert.deepEqual(msgs[4], { messageType: "player_text", text: "Что дальше?" })
 })
 
-test("handleMessage: engine error cancels the action and is rethrown", async () => {
+test("handleMessage: engine refusal goes back to the model, the action is not cancelled", async () => {
   const { store, log } = fakeStore(state)
-  const { model } = fakeModel([damage("ghost")])
+  const { model, calls } = fakeModel([damage("ghost"), say("Призрака здесь нет.")])
   const master = new Master(store, ROOM, model, fixed(0.5))
 
-  await assert.rejects(master.handleMessage("Бью призрака"), /ghost/)
+  const reply = await master.handleMessage("Бью призрака")
+
+  assert.equal(reply, "Призрака здесь нет.")
+  assert.equal(log.cancelled, 0)
+  assert.equal(log.committed.length, 1)
+  assert.deepEqual(log.committed[0], state)
+
+  const results = calls[1].messages[2]
+  assert.ok(results.messageType === "tool_results")
+  assert.match(failureText(results.results[0], "apply_damage"), /ghost/)
+})
+
+test("handleMessage: the model fixes a refused call in the next round", async () => {
+  const { store, log } = fakeStore(state)
+  const { model } = fakeModel([damage("ghost"), damage("e1"), say("Гоблин ранен.")])
+  const master = new Master(store, ROOM, model, fixed(0.5))
+
+  await master.handleMessage("Бью")
+
+  assert.equal(log.committed.length, 1)
+  assert.equal(log.committed[0].enemies[0].hp, 4)
+})
+
+test("handleMessage: a refused call stays in history for the next messages", async () => {
+  const { store } = fakeStore(state)
+  const { model, calls } = fakeModel([damage("ghost"), say("Никого."), say("ok")])
+  const master = new Master(store, ROOM, model, fixed(0.5))
+
+  await master.handleMessage("Бью призрака")
+  await master.handleMessage("Ещё раз")
+
+  const msgs = calls[2].messages
+  assert.deepEqual(
+    msgs.map((m) => m.messageType),
+    ["player_text", "tool_calls", "tool_results", "model_text", "player_text"],
+  )
+  const results = msgs[2]
+  assert.ok(results.messageType === "tool_results")
+  failureText(results.results[0], "apply_damage")
+})
+
+test("handleMessage: a model that keeps failing hits the round limit and cancels", async () => {
+  const { store, log } = fakeStore(state)
+  const { model } = fakeModel(Array.from({ length: 10 }, () => damage("ghost")))
+  const master = new Master(store, ROOM, model, fixed(0.5))
+
+  await assert.rejects(master.handleMessage("Бью призрака"))
   assert.equal(log.cancelled, 1)
   assert.equal(log.committed.length, 0)
 })
@@ -648,7 +803,7 @@ test("handleMessage: failed action leaves no trace in history", async () => {
   const { model, calls } = fakeModel([
     say("Добро пожаловать."),
     damage("e1"),
-    damage("ghost"),
+    new Error("Model is down"),
     say("ok"),
   ])
   const master = new Master(store, ROOM, model, fixed(0.5))

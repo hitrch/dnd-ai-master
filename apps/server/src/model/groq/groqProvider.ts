@@ -102,10 +102,11 @@ export function translateStoryMessagesToMessages(
         break
       }
       case "tool_results": {
-        message.records.forEach((r, recordIndex) => {
-          const id = lastCallIds[recordIndex]
-          if (!id) throw new Error(`Invalid tool result: no call id for record ${recordIndex}`)
-          result.push({ role: "tool", tool_call_id: id, content: JSON.stringify(r.event) })
+        message.results.forEach((r, resultIndex) => {
+          const id = lastCallIds[resultIndex]
+          if (!id) throw new Error(`Invalid tool result: no call id for result ${resultIndex}`)
+          const content = JSON.stringify(r.isOk ? r.event : { error: r.errorText })
+          result.push({ role: "tool", tool_call_id: id, content })
         })
         break
       }

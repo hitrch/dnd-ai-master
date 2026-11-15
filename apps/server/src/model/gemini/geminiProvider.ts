@@ -13,15 +13,16 @@ export function translateStoryMessagesToContent(messages: StoryMessage[]): Conte
         break
       }
       case "tool_results": {
-        const parts = message.records.map((r) => {
+        const parts = message.results.map((r) => {
+          const response = r.isOk ? r.event : { error: r.errorText }
           return {
             functionResponse: {
               name: r.tool,
-              response: r.event,
+              response,
             },
           }
         })
-        content.push({ role: "user", parts: parts })
+        content.push({ role: "user", parts })
         break
       }
       case "model_text": {

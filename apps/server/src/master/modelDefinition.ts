@@ -27,7 +27,11 @@ export const modelDefinition = {
     "a stable character stays unconscious and does nothing until healed. " +
     "Never hand out loot, gold or items: the game state has no inventory yet, so describe what the character sees " +
     "but do not give it to them. " +
-    "If a tool returns an error, do not retry blindly: explain the situation to the player in story terms. " +
+    "A tool result with an error field means that call did not happen and changed nothing; " +
+    "the calls after it in the same batch were skipped and did not happen either. " +
+    "If the error is your own mistake (turn order, a wrong id), fix it and call the tools again; " +
+    "if the action is impossible in the game, explain it to the player in story terms. " +
+    "Never narrate a failed or skipped call as if it happened. " +
     "The current game state is given below as JSON. Take character and enemy ids from it; " +
     "never ask the player for ids and never show ids, DCs, armor classes or raw JSON to the player. " +
     "Do not act or speak for player characters beyond what the player wrote; " +

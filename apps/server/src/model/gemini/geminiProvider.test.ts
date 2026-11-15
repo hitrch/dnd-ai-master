@@ -11,6 +11,7 @@ import {
 } from "./geminiProvider"
 import { toolDefinitions } from "../../master/toolDefinitions"
 import type { ToolDefinition } from "../types"
+import type { ToolResult } from "../../types"
 import { ModelError } from "../modelError"
 
 const checkRecord: GameRecord = {
@@ -42,6 +43,9 @@ const damageRecord: GameRecord = {
     outcome: "alive",
   },
 }
+
+// Wraps a record as a successful tool result
+const ok = (record: GameRecord): ToolResult => ({ ...record, isOk: true })
 
 // Builds a real SDK response so the text / functionCalls getters work as in production
 function geminiResponse(parts: Part[] | undefined): GenerateContentResponse {
@@ -95,7 +99,7 @@ test("toContent: tool calls become one model content with a functionCall part pe
 
 test("toContent: tool results become one user content with a functionResponse per record", () => {
   const c = translateStoryMessagesToContent([
-    { messageType: "tool_results", records: [checkRecord, damageRecord] },
+    { messageType: "tool_results", results: [ok(checkRecord), ok(damageRecord)] },
   ])
   assert.deepEqual(c, [
     {
@@ -103,6 +107,32 @@ test("toContent: tool results become one user content with a functionResponse pe
       parts: [
         { functionResponse: { name: "roll_check", response: checkRecord.event } },
         { functionResponse: { name: "apply_damage", response: damageRecord.event } },
+      ],
+    },
+  ])
+})
+
+test("toContent: a failed result becomes a functionResponse with the error object", () => {
+  const c = translateStoryMessagesToContent([
+    {
+      messageType: "tool_results",
+      results: [
+        { isOk: false, tool: "attack", errorText: "Not p1's turn" },
+        { isOk: false, tool: "end_turn", errorText: "skipped: previous call failed" },
+      ],
+    },
+  ])
+  assert.deepEqual(c, [
+    {
+      role: "user",
+      parts: [
+        { functionResponse: { name: "attack", response: { error: "Not p1's turn" } } },
+        {
+          functionResponse: {
+            name: "end_turn",
+            response: { error: "skipped: previous call failed" },
+          },
+        },
       ],
     },
   ])
@@ -117,7 +147,7 @@ test("toContent: order and count of messages are preserved", () => {
         { name: "apply_damage", args: { targetId: "e1", diceCount: 1, diceSides: 4, bonus: 0 } },
       ],
     },
-    { messageType: "tool_results", records: [damageRecord] },
+    { messageType: "tool_results", results: [ok(damageRecord)] },
     { messageType: "model_text", text: "Ранен." },
   ])
   assert.deepEqual(

@@ -11,88 +11,207 @@ import {
 } from "../engine/engine"
 import type { Rng } from "../engine/engine"
 import { ToolArgsSchemas } from "@dnd/shared"
-import type { GameState, GameRecord } from "@dnd/shared"
+import type { GameState } from "@dnd/shared"
 import { isTool } from "../utils"
 import { toolDefinitions } from "./toolDefinitions"
 import { modelDefinition } from "./modelDefinition"
-import type { ActionStore, ToolRunResult } from "../types"
+import type { ActionStore, ToolResult, ToolRunResult } from "../types"
+import { z } from "zod"
 
 export function executeTools(tools: ToolCall[], gameState: GameState, rng: Rng): ToolRunResult {
-  const gameRecords: GameRecord[] = []
+  const results: ToolResult[] = []
   let draft = gameState
+  let hasFailed = false
+  const fail = (tool: string, errorText: string) => {
+    results.push({ isOk: false, tool, errorText })
+    hasFailed = true
+  }
+
   for (const call of tools) {
-    if (!isTool(call.name)) throw new Error(`Unknown tool: ${call.name}`)
+    if (hasFailed) {
+      results.push({ isOk: false, tool: call.name, errorText: "skipped: previous call failed" })
+      continue
+    }
+
+    if (!isTool(call.name)) {
+      fail(call.name, `Unknown tool: ${call.name}`)
+      continue
+    }
+
     switch (call.name) {
       case "roll_check": {
-        const rollCheckArgs = ToolArgsSchemas.roll_check.parse(call.args)
-        const rollCheckResult = rollCheck(draft, rollCheckArgs, rng)
-        if (!rollCheckResult.isOk) throw new Error(rollCheckResult.errorText)
+        const rollCheckArgs = ToolArgsSchemas.roll_check.safeParse(call.args)
+        if (!rollCheckArgs.success) {
+          fail(call.name, z.prettifyError(rollCheckArgs.error))
+          continue
+        }
+
+        const rollCheckResult = rollCheck(draft, rollCheckArgs.data, rng)
+        if (!rollCheckResult.isOk) {
+          fail(call.name, rollCheckResult.errorText)
+          continue
+        }
+
         draft = rollCheckResult.state
-        gameRecords.push({ tool: "roll_check", args: rollCheckArgs, event: rollCheckResult.event })
+        results.push({
+          isOk: true,
+          tool: "roll_check",
+          args: rollCheckArgs.data,
+          event: rollCheckResult.event,
+        })
         break
       }
       case "apply_damage": {
-        const applyDamageArgs = ToolArgsSchemas.apply_damage.parse(call.args)
-        const applyDamageResult = applyDamage(draft, applyDamageArgs, rng)
-        if (!applyDamageResult.isOk) throw new Error(applyDamageResult.errorText)
+        const applyDamageArgs = ToolArgsSchemas.apply_damage.safeParse(call.args)
+        if (!applyDamageArgs.success) {
+          fail(call.name, z.prettifyError(applyDamageArgs.error))
+          continue
+        }
+
+        const applyDamageResult = applyDamage(draft, applyDamageArgs.data, rng)
+        if (!applyDamageResult.isOk) {
+          fail(call.name, applyDamageResult.errorText)
+          continue
+        }
+
         draft = applyDamageResult.state
-        gameRecords.push({
+        results.push({
+          isOk: true,
           tool: "apply_damage",
-          args: applyDamageArgs,
+          args: applyDamageArgs.data,
           event: applyDamageResult.event,
         })
         break
       }
       case "attack": {
-        const attackArgs = ToolArgsSchemas.attack.parse(call.args)
-        const attackResult = attack(draft, attackArgs, rng)
-        if (!attackResult.isOk) throw new Error(attackResult.errorText)
+        const attackArgs = ToolArgsSchemas.attack.safeParse(call.args)
+        if (!attackArgs.success) {
+          fail(call.name, z.prettifyError(attackArgs.error))
+          continue
+        }
+
+        const attackResult = attack(draft, attackArgs.data, rng)
+        if (!attackResult.isOk) {
+          fail(call.name, attackResult.errorText)
+          continue
+        }
+
         draft = attackResult.state
-        gameRecords.push({ tool: "attack", args: attackArgs, event: attackResult.event })
+        results.push({
+          isOk: true,
+          tool: "attack",
+          args: attackArgs.data,
+          event: attackResult.event,
+        })
         break
       }
       case "death_save": {
-        const deathSaveArgs = ToolArgsSchemas.death_save.parse(call.args)
-        const deathSaveResult = deathSave(draft, deathSaveArgs, rng)
-        if (!deathSaveResult.isOk) throw new Error(deathSaveResult.errorText)
+        const deathSaveArgs = ToolArgsSchemas.death_save.safeParse(call.args)
+        if (!deathSaveArgs.success) {
+          fail(call.name, z.prettifyError(deathSaveArgs.error))
+          continue
+        }
+
+        const deathSaveResult = deathSave(draft, deathSaveArgs.data, rng)
+        if (!deathSaveResult.isOk) {
+          fail(call.name, deathSaveResult.errorText)
+          continue
+        }
+
         draft = deathSaveResult.state
-        gameRecords.push({ tool: "death_save", args: deathSaveArgs, event: deathSaveResult.event })
+        results.push({
+          isOk: true,
+          tool: "death_save",
+          args: deathSaveArgs.data,
+          event: deathSaveResult.event,
+        })
         break
       }
       case "apply_heal": {
-        const applyHealArgs = ToolArgsSchemas.apply_heal.parse(call.args)
-        const applyHealResult = applyHeal(draft, applyHealArgs, rng)
-        if (!applyHealResult.isOk) throw new Error(applyHealResult.errorText)
+        const applyHealArgs = ToolArgsSchemas.apply_heal.safeParse(call.args)
+        if (!applyHealArgs.success) {
+          fail(call.name, z.prettifyError(applyHealArgs.error))
+          continue
+        }
+
+        const applyHealResult = applyHeal(draft, applyHealArgs.data, rng)
+        if (!applyHealResult.isOk) {
+          fail(call.name, applyHealResult.errorText)
+          continue
+        }
+
         draft = applyHealResult.state
-        gameRecords.push({ tool: "apply_heal", args: applyHealArgs, event: applyHealResult.event })
+        results.push({
+          isOk: true,
+          tool: "apply_heal",
+          args: applyHealArgs.data,
+          event: applyHealResult.event,
+        })
         break
       }
       case "start_combat": {
-        const startCombatArgs = ToolArgsSchemas.start_combat.parse(call.args)
-        const startCombatResult = startCombat(draft, startCombatArgs, rng)
-        if (!startCombatResult.isOk) throw new Error(startCombatResult.errorText)
+        const startCombatArgs = ToolArgsSchemas.start_combat.safeParse(call.args)
+        if (!startCombatArgs.success) {
+          fail(call.name, z.prettifyError(startCombatArgs.error))
+          continue
+        }
+
+        const startCombatResult = startCombat(draft, startCombatArgs.data, rng)
+        if (!startCombatResult.isOk) {
+          fail(call.name, startCombatResult.errorText)
+          continue
+        }
+
         draft = startCombatResult.state
-        gameRecords.push({
+        results.push({
+          isOk: true,
           tool: "start_combat",
-          args: startCombatArgs,
+          args: startCombatArgs.data,
           event: startCombatResult.event,
         })
         break
       }
       case "end_combat": {
-        const endCombatArgs = ToolArgsSchemas.end_combat.parse(call.args)
+        const endCombatArgs = ToolArgsSchemas.end_combat.safeParse(call.args)
+        if (!endCombatArgs.success) {
+          fail(call.name, z.prettifyError(endCombatArgs.error))
+          continue
+        }
+
         const endCombatResult = endCombat(draft)
-        if (!endCombatResult.isOk) throw new Error(endCombatResult.errorText)
+        if (!endCombatResult.isOk) {
+          fail(call.name, endCombatResult.errorText)
+          continue
+        }
+
         draft = endCombatResult.state
-        gameRecords.push({ tool: "end_combat", args: endCombatArgs, event: endCombatResult.event })
+        results.push({
+          isOk: true,
+          tool: "end_combat",
+          args: endCombatArgs.data,
+          event: endCombatResult.event,
+        })
         break
       }
       case "end_turn": {
-        const endTurnArgs = ToolArgsSchemas.end_turn.parse(call.args)
-        const endTurnResult = endTurn(draft, endTurnArgs)
-        if (!endTurnResult.isOk) throw new Error(endTurnResult.errorText)
+        const endTurnArgs = ToolArgsSchemas.end_turn.safeParse(call.args)
+        if (!endTurnArgs.success) {
+          fail(call.name, z.prettifyError(endTurnArgs.error))
+          continue
+        }
+
+        const endTurnResult = endTurn(draft, endTurnArgs.data)
+        if (!endTurnResult.isOk) {
+          fail(call.name, endTurnResult.errorText)
+          continue
+        }
         draft = endTurnResult.state
-        gameRecords.push({ tool: "end_turn", args: endTurnArgs, event: endTurnResult.event })
+        results.push({
+          isOk: true,
+          tool: "end_turn",
+          args: endTurnArgs.data,
+          event: endTurnResult.event,
+        })
         break
       }
       default: {
@@ -102,7 +221,7 @@ export function executeTools(tools: ToolCall[], gameState: GameState, rng: Rng):
     }
   }
 
-  return { state: draft, records: gameRecords }
+  return { state: draft, results }
 }
 
 export class Master {
@@ -142,7 +261,7 @@ export class Master {
           case "tool_calls": {
             const executionResult = executeTools(modelResponse.calls, draft, this._rng)
             draft = executionResult.state
-            messages.push({ messageType: "tool_results", records: executionResult.records })
+            messages.push({ messageType: "tool_results", results: executionResult.results })
             break
           }
           default: {

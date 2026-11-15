@@ -18,8 +18,12 @@ import {
 import { toolDefinitions } from "../../master/toolDefinitions"
 import type { StoryMessage, ToolCall } from "../types"
 import { ModelError } from "../modelError"
+import type { ToolResult } from "../../types"
 
 const instruction = "You are the master."
+
+// Wraps a record as a successful tool result
+const ok = (record: GameRecord): ToolResult => ({ ...record, isOk: true })
 
 const checkRecord: GameRecord = {
   tool: "roll_check",
@@ -343,7 +347,7 @@ test("toMessages: each record becomes its own tool message with the event and th
   const history: StoryMessage[] = [
     { messageType: "player_text", text: "Крадусь и бью гоблина." },
     { messageType: "tool_calls", calls: [checkCall, damageCall] },
-    { messageType: "tool_results", records: [checkRecord, damageRecord] },
+    { messageType: "tool_results", results: [ok(checkRecord), ok(damageRecord)] },
   ]
   const m = translateStoryMessagesToMessages(history, instruction)
   assert.equal(m.length, 5)
@@ -356,10 +360,31 @@ test("toMessages: each record becomes its own tool message with the event and th
   assert.deepEqual(JSON.parse(second.content as string), damageRecord.event)
 })
 
+test("toMessages: a failed result becomes a tool message with the error object and its call id", () => {
+  const history: StoryMessage[] = [
+    { messageType: "tool_calls", calls: [checkCall, damageCall] },
+    {
+      messageType: "tool_results",
+      results: [
+        { isOk: false, tool: "roll_check", errorText: "Character p9 not found" },
+        { isOk: false, tool: "apply_damage", errorText: "skipped: previous call failed" },
+      ],
+    },
+  ]
+  const m = translateStoryMessagesToMessages(history, instruction)
+  const calls = assistantCalls(m[1])
+  const first = toolMessage(m[2])
+  const second = toolMessage(m[3])
+  assert.equal(first.tool_call_id, calls[0]!.id)
+  assert.equal(second.tool_call_id, calls[1]!.id)
+  assert.deepEqual(JSON.parse(first.content as string), { error: "Character p9 not found" })
+  assert.deepEqual(JSON.parse(second.content as string), { error: "skipped: previous call failed" })
+})
+
 test("toMessages: two calls of the same tool in one message get different ids", () => {
   const history: StoryMessage[] = [
     { messageType: "tool_calls", calls: [damageCall, secondDamageCall] },
-    { messageType: "tool_results", records: [damageRecord, secondDamageRecord] },
+    { messageType: "tool_results", results: [ok(damageRecord), ok(secondDamageRecord)] },
   ]
   const m = translateStoryMessagesToMessages(history, instruction)
   const calls = assistantCalls(m[1])
@@ -372,11 +397,11 @@ test("toMessages: results of a later round point to the calls of that round", ()
   const history: StoryMessage[] = [
     { messageType: "player_text", text: "Крадусь." },
     { messageType: "tool_calls", calls: [checkCall] },
-    { messageType: "tool_results", records: [checkRecord] },
+    { messageType: "tool_results", results: [ok(checkRecord)] },
     { messageType: "model_text", text: "Гоблин не заметил." },
     { messageType: "player_text", text: "Бью его." },
     { messageType: "tool_calls", calls: [damageCall] },
-    { messageType: "tool_results", records: [damageRecord] },
+    { messageType: "tool_results", results: [ok(damageRecord)] },
   ]
   const m = translateStoryMessagesToMessages(history, instruction)
   const laterCalls = assistantCalls(m[6])
@@ -387,9 +412,9 @@ test("toMessages: call ids are unique across the whole history", () => {
   // The same tool in two rounds: ids must not repeat, otherwise a result could be matched to an old call
   const history: StoryMessage[] = [
     { messageType: "tool_calls", calls: [checkCall] },
-    { messageType: "tool_results", records: [checkRecord] },
+    { messageType: "tool_results", results: [ok(checkRecord)] },
     { messageType: "tool_calls", calls: [checkCall] },
-    { messageType: "tool_results", records: [checkRecord] },
+    { messageType: "tool_results", results: [ok(checkRecord)] },
   ]
   const m = translateStoryMessagesToMessages(history, instruction)
   const ids = [...assistantCalls(m[1]), ...assistantCalls(m[3])].map((c) => c.id)
@@ -399,7 +424,7 @@ test("toMessages: call ids are unique across the whole history", () => {
 test("toMessages: a result without a call before it throws", () => {
   assert.throws(() =>
     translateStoryMessagesToMessages(
-      [{ messageType: "tool_results", records: [checkRecord] }],
+      [{ messageType: "tool_results", results: [ok(checkRecord)] }],
       instruction,
     ),
   )
@@ -408,7 +433,7 @@ test("toMessages: a result without a call before it throws", () => {
 test("toMessages: more results than calls throws", () => {
   const history: StoryMessage[] = [
     { messageType: "tool_calls", calls: [checkCall] },
-    { messageType: "tool_results", records: [checkRecord, damageRecord] },
+    { messageType: "tool_results", results: [ok(checkRecord), ok(damageRecord)] },
   ]
   assert.throws(() => translateStoryMessagesToMessages(history, instruction))
 })

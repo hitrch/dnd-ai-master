@@ -1,4 +1,5 @@
-import type { GameRecord, ToolName } from "@dnd/shared"
+import type { ToolName } from "@dnd/shared"
+import type { ToolResult } from "../types"
 
 export type ToolCall = {
   name: string
@@ -15,7 +16,7 @@ export type StoryMessage =
   | ModelResponse
   | {
       messageType: "tool_results"
-      records: GameRecord[]
+      results: ToolResult[]
     }
 
 export type ModelResponse =
