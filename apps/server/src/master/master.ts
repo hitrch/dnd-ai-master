@@ -230,13 +230,16 @@ export class Master {
   private readonly _messages: StoryMessage[] = []
   private readonly _model: ModelProvider
   private readonly _rng: Rng
-  private readonly _maxRounds = 5
+  private readonly _maxRounds: number
 
-  constructor(store: ActionStore, roomId: string, model: ModelProvider, rng: Rng = Math.random) {
+  constructor(store: ActionStore, roomId: string, model: ModelProvider, rng: Rng = Math.random, maxRounds: number = 5) {
+    if (!Number.isInteger(maxRounds) || maxRounds <= 0) throw new Error("Max rounds must be an integer greater than 0")
+
     this._store = store
     this._roomId = roomId
     this._model = model
     this._rng = rng
+    this._maxRounds = maxRounds
   }
 
   async handleMessage(text: string): Promise<string> {

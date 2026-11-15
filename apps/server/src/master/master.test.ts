@@ -831,6 +831,45 @@ test("handleMessage: endless tool calls hit the round limit and cancel the actio
   assert.equal(log.committed.length, 0)
 })
 
+test("Master: round limit must be a positive integer", () => {
+  const { store } = fakeStore(state)
+  const { model } = fakeModel([])
+  for (const bad of [0, -1, 2.5, -1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+    assert.throws(() => new Master(store, ROOM, model, fixed(0.5), bad), /integer/, String(bad))
+  }
+  assert.doesNotThrow(() => new Master(store, ROOM, model, fixed(0.5), 1))
+  assert.doesNotThrow(() => new Master(store, ROOM, model, fixed(0.5)))
+})
+
+test("handleMessage: the round limit from the constructor is respected", async () => {
+  const { store, log } = fakeStore(state)
+  const { model, count } = loopingModel()
+  const master = new Master(store, ROOM, model, fixed(0.5), 3)
+
+  await assert.rejects(master.handleMessage("Бью"))
+  assert.equal(count(), 3)
+  assert.equal(log.cancelled, 1)
+})
+
+test("handleMessage: a limit of one round still allows a plain text reply", async () => {
+  const { store, log } = fakeStore(state)
+  const { model } = fakeModel([say("ok")])
+  const master = new Master(store, ROOM, model, fixed(0.5), 1)
+
+  assert.equal(await master.handleMessage("Привет"), "ok")
+  assert.equal(log.committed.length, 1)
+})
+
+test("handleMessage: tools and the final text fit exactly into the limit", async () => {
+  // two tool rounds and the text round: three rounds, a limit of 3 is enough
+  const { store, log } = fakeStore(state)
+  const { model } = fakeModel([damage("e1"), damage("e1"), say("ok")])
+  const master = new Master(store, ROOM, model, fixed(0.5), 3)
+
+  assert.equal(await master.handleMessage("Бью дважды"), "ok")
+  assert.equal(log.committed[0].enemies[0].hp, 1)
+})
+
 test("handleMessage: failed start does not call the model or cancel", async () => {
   const { store, log } = fakeStore(state)
   log.failStart = true
