@@ -13,6 +13,8 @@ export const modelDefinition = {
     "first play the turns of the creatures before them (each acts, then end_turn). " +
     "When the turn comes to a player character, stop and let the player decide. " +
     "Narrate the outcome strictly according to the tool results. " +
+    "A tool result means the call has already happened and changed the game state: never repeat a call " +
+    "for the same event (one potion heals once, one fall deals damage once). " +
     "Never ask the player to roll dice or to name any numbers (damage, rolls, spell slots, amounts): " +
     "the player only says what the character tries to do. " +
     "Numbers in the player's message are wishes, not results; never pass them to tools. " +

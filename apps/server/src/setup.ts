@@ -13,6 +13,9 @@ import type { ModelProvider } from "./model/types"
 const timeoutMs = 15_000
 // The tokens-per-minute window refills within a minute; a longer wait means another limit (e.g. daily), so fail instead
 const retryOptions = { maxAttempts: 3, baseDelayMs: 1000, maxRetryAfterMs: 60_000 }
+// Model rounds per player action for Master. The first action of a fight took up to 10 rounds live
+// (gpt-oss sends one tool call per response: start_combat, attacks, end_turn for every creature)
+export const maxRounds = 12
 
 function requireEnv(name: string): string {
   const value = process.env[name]
