@@ -208,7 +208,7 @@ test("end_turn call is executed by the engine and recorded", () => {
   const rec = r.results[0]
   assert.ok(rec.isOk && rec.tool === "end_turn")
   assert.deepEqual(rec.args, { creatureId: "p1" })
-  assert.equal(rec.event.nextCreatureId, "e1")
+  assert.equal(rec.event.nextTurn.nextCreatureId, "e1")
   assert.equal(r.state.combat?.activeCreatureId, "e1")
 })
 
@@ -224,7 +224,7 @@ const scimitar = {
   damage: { diceCount: 1, diceSides: 6 as const, bonus: 2 },
 }
 
-test("a full round in one batch: attack, end_turn, enemy attack, end_turn", () => {
+test("a full round in one batch: the attacks pass the turns themselves", () => {
   // every d20 rolls 11: 11 + 5 = 16 vs AC 15 and 11 + 4 = 15 vs AC 14, both attacks hit
   const fighting = {
     ...state,
@@ -234,16 +234,32 @@ test("a full round in one batch: attack, end_turn, enemy attack, end_turn", () =
   const r = executeTools(
     [
       { name: "attack", args: { attackerId: "p1", weaponId: "dagger", targetId: "e1" } },
-      { name: "end_turn", args: { creatureId: "p1" } },
       { name: "attack", args: { attackerId: "e1", weaponId: "scimitar", targetId: "p1" } },
-      { name: "end_turn", args: { creatureId: "e1" } },
     ],
     fighting,
     fixed(0.5),
   )
+  assert.ok(r.results.every((res) => res.isOk))
   assert.deepEqual(r.state.combat, { order: ["p1", "e1"], round: 2, activeCreatureId: "p1" })
   assert.equal(r.state.enemies[0].hp, 1)
   assert.equal(r.state.players[0].hp, 6)
+})
+
+test("end_turn after an attack is refused: the attack has already passed the turn", () => {
+  const fighting = { ...state, combat: { order: ["p1", "e1"], round: 1, activeCreatureId: "p1" } }
+  const r = executeTools(
+    [
+      { name: "attack", args: { attackerId: "p1", weaponId: "dagger", targetId: "e1" } },
+      { name: "end_turn", args: { creatureId: "p1" } },
+    ],
+    fighting,
+    fixed(0.5),
+  )
+  assert.ok(r.results[0]?.isOk)
+  failureText(r.results[1], "end_turn")
+  // the attack stays applied: a refused call does not undo the ones before it
+  assert.equal(r.state.combat?.activeCreatureId, "e1")
+  assert.equal(r.state.enemies[0].hp, 1)
 })
 
 test("attack out of turn in combat returns a failed result naming the active creature", () => {

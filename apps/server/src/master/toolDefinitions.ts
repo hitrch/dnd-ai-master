@@ -22,7 +22,7 @@ export const ToolDescriptions = {
   attack:
     "Weapon attack by a player character or an enemy: d20 + the weapon's attack bonus against the target's armor class; " +
     "on a hit the engine rolls the weapon's damage. Use one of the attacker's own weapons. " +
-    "In combat only the active creature can attack. damage is null on a miss. " +
+    "In combat only the active creature can attack, and any attack ends its turn. " +
     damageOutcomeDescription,
   apply_damage:
     "Damage without an attack roll: traps, falls, fire, poison and other hazards; never for a weapon attack. " +
@@ -31,9 +31,9 @@ export const ToolDescriptions = {
     damageOutcomeDescription,
   death_save:
     "Death saving throw for a player character at 0 hit points who is still dying (not stable, not dead). " +
-    "Call it instead of whatever the dying character tries to do; in combat once, on their own turn. " +
+    "Call it instead of whatever the dying character tries to do; in combat on their own turn, and it ends the turn. " +
     "Outcomes: success, failure, stable (unconscious, no longer dying), dead, " +
-    "regainedConsciousness (a natural 20: awake with 1 hit point).",
+    "regainedConsciousness (a natural 20: awake with 1 hit point, the turn goes on).",
   apply_heal:
     "Restores hit points to a player character or an enemy. " +
     "Call it only when a real source exists: a spell or ability listed for the creature in the game state, " +
@@ -55,10 +55,8 @@ export const ToolDescriptions = {
     "or the characters have escaped. Not while any enemy still fights. " +
     "Call it in the same response in which the last enemy falls.",
   end_turn:
-    "Ends the turn of the active creature (combat.activeCreatureId) after it has acted, even if it did nothing, " +
-    "and passes the turn to the next creature that can act. " +
-    "A dying player character still gets turns for death saves. " +
-    "If one side has nobody left who can fight, call end_combat instead.",
+    "Ends the turn of the active creature (combat.activeCreatureId) that did not attack or make a death save " +
+    "(those end the turn themselves): it talked, moved, hid or did nothing.",
 } satisfies Record<ToolName, string>
 
 export const toolDefinitions: ToolDefinition[] = Object.keys(ToolArgsSchemas).map((tool) => {

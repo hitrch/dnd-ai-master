@@ -243,7 +243,9 @@ test("attack: hit fills the event and deals weapon damage", () => {
   const { rng } = sequence(0.5, 0.5)
   const r = attack(state, daggerAtGoblin, rng)
   assert.ok(r.isOk)
-  const { damage, ...roll } = r.event
+  const { damage, nextTurn, ...roll } = r.event
+  // outside combat there are no turns
+  assert.equal(nextTurn, null)
   assert.deepEqual(roll, {
     attackerId: "p1",
     attackerName: "Арвен",
@@ -403,6 +405,7 @@ test("death save: 10 is a success and fills the event", () => {
     successes: 1,
     failures: 0,
     outcome: "success",
+    nextTurn: null,
   })
   assert.equal(r.state.players[0].saveRollSuccesses, 1)
   assert.equal(r.state.players[0].saveRollFails, 0)
@@ -1082,10 +1085,12 @@ test("end turn: passes the turn to the next creature and fills the event", () =>
   assert.deepEqual(r.event, {
     creatureId: "p1",
     creatureName: "Арвен",
-    nextCreatureId: "e1",
-    nextCreatureName: "Гоблин-часовой",
-    round: 1,
-    isNewRound: false,
+    nextTurn: {
+      nextCreatureId: "e1",
+      nextCreatureName: "Гоблин-часовой",
+      round: 1,
+      isNewRound: false,
+    },
   })
   assert.deepEqual(r.state.combat, {
     order: ["p1", "e1", "p2", "e2"],
@@ -1098,9 +1103,9 @@ test("end turn: after the last creature the order starts over in a new round", (
   const s = inCombat(["p1", "e1", "p2", "e2"], "e2")
   const r = endTurn(s, { creatureId: "e2" })
   assert.ok(r.isOk)
-  assert.equal(r.event.nextCreatureId, "p1")
-  assert.equal(r.event.round, 2)
-  assert.equal(r.event.isNewRound, true)
+  assert.equal(r.event.nextTurn.nextCreatureId, "p1")
+  assert.equal(r.event.nextTurn.round, 2)
+  assert.equal(r.event.nextTurn.isNewRound, true)
   assert.equal(r.state.combat?.round, 2)
   assert.equal(r.state.combat?.activeCreatureId, "p1")
 })
@@ -1119,20 +1124,20 @@ test("end turn: an enemy at 0 HP is skipped", () => {
   const s = inCombat(["p1", "e1", "p2", "e2"], "p1", crowdWith("e1", { hp: 0 }))
   const r = endTurn(s, { creatureId: "p1" })
   assert.ok(r.isOk)
-  assert.equal(r.event.nextCreatureId, "p2")
-  assert.equal(r.event.isNewRound, false)
+  assert.equal(r.event.nextTurn.nextCreatureId, "p2")
+  assert.equal(r.event.nextTurn.isNewRound, false)
 })
 
 test("end turn: a dead player is skipped, a down but living player gets the turn", () => {
   const dead = inCombat(["e1", "p1", "p2"], "e1", crowdWith("p1", { hp: 0, saveRollFails: 3 }))
   const skipped = endTurn(dead, { creatureId: "e1" })
   assert.ok(skipped.isOk)
-  assert.equal(skipped.event.nextCreatureId, "p2")
+  assert.equal(skipped.event.nextTurn.nextCreatureId, "p2")
 
   const down = inCombat(["e1", "p1", "p2"], "e1", crowdWith("p1", { hp: 0, saveRollFails: 2 }))
   const kept = endTurn(down, { creatureId: "e1" })
   assert.ok(kept.isOk)
-  assert.equal(kept.event.nextCreatureId, "p1")
+  assert.equal(kept.event.nextTurn.nextCreatureId, "p1")
 })
 
 test("end turn: skipping past the end of the order starts a new round", () => {
@@ -1140,9 +1145,9 @@ test("end turn: skipping past the end of the order starts a new round", () => {
   const s = inCombat(["e1", "p1", "e2"], "p1", crowdWith("e2", { hp: 0 }))
   const r = endTurn(s, { creatureId: "p1" })
   assert.ok(r.isOk)
-  assert.equal(r.event.nextCreatureId, "e1")
-  assert.equal(r.event.round, 2)
-  assert.equal(r.event.isNewRound, true)
+  assert.equal(r.event.nextTurn.nextCreatureId, "e1")
+  assert.equal(r.event.nextTurn.round, 2)
+  assert.equal(r.event.nextTurn.isNewRound, true)
 })
 
 test("end turn: a creature that died on its own turn can still end it", () => {
@@ -1150,7 +1155,7 @@ test("end turn: a creature that died on its own turn can still end it", () => {
   const s = inCombat(["p1", "e1", "p2"], "p1", crowdWith("p1", { hp: 0, saveRollFails: 3 }))
   const r = endTurn(s, { creatureId: "p1" })
   assert.ok(r.isOk)
-  assert.equal(r.event.nextCreatureId, "e1")
+  assert.equal(r.event.nextTurn.nextCreatureId, "e1")
 })
 
 test("end turn: does not mutate the original state and keeps the creatures", () => {
@@ -1224,16 +1229,146 @@ test("turns: in combat a death save only on the character's own turn", () => {
   assert.ok(own.isOk)
 })
 
-test("turns: a second death save on the same turn needs end_turn in between", () => {
-  // the model once called death_save twice in one message; now the second one is
-  // still the same turn, so the guard is end_turn, not death_save itself
+test("turns: a death save ends the turn, a second one on the same turn is refused", () => {
+  // the model once called death_save twice in one message
   const s = inCombat(["p1", "e1"], "p1", crowdWith("p1", { hp: 0 }))
   const first = deathSave(s, saveP1, fixed(0.5))
   assert.ok(first.isOk)
-  const ended = endTurn(first.state, { creatureId: "p1" })
-  assert.ok(ended.isOk)
-  const second = deathSave(ended.state, saveP1, sequence().rng)
+  const second = deathSave(first.state, saveP1, sequence().rng)
   assert.equal(second.isOk, false)
+})
+
+// ---------- turn passing by actions ----------
+// attack and death_save end the turn themselves; end_turn is only for turns without them
+
+const scimitarAtArwen = { attackerId: "e1", weaponId: "scimitar", targetId: "p1" }
+
+test("turn passing: a hit in combat passes the turn and the event tells who is next", () => {
+  // d20 = 11, 16 vs AC 15; d4 = 3: e1 7 -> 1, still standing
+  const s = inCombat(["p1", "e1", "p2", "e2"], "p1")
+  const r = attack(s, daggerAtGoblin, sequence(0.5, 0.5).rng)
+  assert.ok(r.isOk)
+  assert.deepEqual(r.event.nextTurn, {
+    nextCreatureId: "e1",
+    nextCreatureName: "Гоблин-часовой",
+    round: 1,
+    isNewRound: false,
+  })
+  assert.deepEqual(r.state.combat, {
+    order: ["p1", "e1", "p2", "e2"],
+    round: 1,
+    activeCreatureId: "e1",
+  })
+  assert.equal(r.state.enemies[0].hp, 1)
+})
+
+test("turn passing: a miss passes the turn too", () => {
+  // natural 1
+  const s = inCombat(["p1", "e1"], "p1")
+  const r = attack(s, daggerAtGoblin, sequence(0).rng)
+  assert.ok(r.isOk)
+  assert.equal(r.event.hasHit, false)
+  assert.equal(r.event.nextTurn?.nextCreatureId, "e1")
+  assert.equal(r.state.combat?.activeCreatureId, "e1")
+})
+
+test("turn passing: a creature killed by the attack is skipped", () => {
+  // e1 at 1 HP dies from the hit, so the turn goes past it to p2
+  const s = inCombat(["p1", "e1", "p2", "e2"], "p1", crowdWith("e1", { hp: 1 }))
+  const r = attack(s, daggerAtGoblin, sequence(0.5, 0.5).rng)
+  assert.ok(r.isOk)
+  assert.equal(r.event.damage?.outcome, "dead")
+  assert.equal(r.event.nextTurn?.nextCreatureId, "p2")
+  assert.equal(r.state.combat?.activeCreatureId, "p2")
+})
+
+test("turn passing: an attack by the last creature in the order starts a new round", () => {
+  // d20 = 11, 15 vs AC 14; d6 = 4, 4 + 2 = 6
+  const s = inCombat(["p1", "e1"], "e1")
+  const r = attack(s, scimitarAtArwen, fixed(0.5))
+  assert.ok(r.isOk)
+  assert.deepEqual(r.event.nextTurn, {
+    nextCreatureId: "p1",
+    nextCreatureName: "Арвен",
+    round: 2,
+    isNewRound: true,
+  })
+  assert.deepEqual(r.state.combat, { order: ["p1", "e1"], round: 2, activeCreatureId: "p1" })
+})
+
+test("turn passing: killing the last enemy succeeds, keeps the combat and passes no turn", () => {
+  // e2 is not in this fight; e1 at 1 HP dies
+  const s = inCombat(["p1", "e1"], "p1", crowdWith("e1", { hp: 1 }))
+  const r = attack(s, daggerAtGoblin, sequence(0.5, 0.5).rng)
+  assert.ok(r.isOk)
+  assert.equal(r.event.damage?.outcome, "dead")
+  assert.equal(r.event.nextTurn, null)
+  assert.deepEqual(r.state.combat, s.combat)
+  // the fight is over: the turn cannot be passed, the model has to end the combat
+  const ended = endTurn(r.state, { creatureId: "p1" })
+  assert.equal(ended.isOk, false)
+  assert.match(ended.isOk ? "" : ended.errorText, /end_combat/)
+  assert.ok(endCombat(r.state).isOk)
+})
+
+test("turn passing: an attack outside combat has no turn and starts no combat", () => {
+  const r = attack(state, daggerAtGoblin, fixed(0))
+  assert.ok(r.isOk)
+  assert.equal(r.event.nextTurn, null)
+  assert.equal(r.state.combat, null)
+})
+
+test("turn passing: an attack refused in combat changes nothing", () => {
+  // unknown weapon: refused before any roll
+  const s = inCombat(["p1", "e1"], "p1")
+  const r = attack(s, { ...daggerAtGoblin, weaponId: "axe" }, sequence().rng)
+  assert.equal(r.isOk, false)
+  assert.equal(s.combat?.activeCreatureId, "p1")
+})
+
+test("turn passing: a death save in combat passes the turn", () => {
+  // d20 = 11: a success
+  const s = inCombat(["p1", "e1"], "p1", crowdWith("p1", { hp: 0 }))
+  const r = deathSave(s, saveP1, fixed(0.5))
+  assert.ok(r.isOk)
+  assert.equal(r.event.outcome, "success")
+  assert.deepEqual(r.event.nextTurn, {
+    nextCreatureId: "e1",
+    nextCreatureName: "Гоблин-часовой",
+    round: 1,
+    isNewRound: false,
+  })
+  assert.equal(r.state.combat?.activeCreatureId, "e1")
+})
+
+test("turn passing: a natural 20 on a death save keeps the turn, the character acts at once", () => {
+  const s = inCombat(["p1", "e1"], "p1", crowdWith("p1", { hp: 0 }))
+  const r = deathSave(s, saveP1, fixed(0.999))
+  assert.ok(r.isOk)
+  assert.equal(r.event.outcome, "regainedConsciousness")
+  assert.equal(r.event.nextTurn, null)
+  assert.equal(r.state.combat?.activeCreatureId, "p1")
+  // the same turn goes on with an attack, and that attack passes the turn
+  const hit = attack(r.state, daggerAtGoblin, sequence(0.5, 0.5).rng)
+  assert.ok(hit.isOk)
+  assert.equal(hit.state.combat?.activeCreatureId, "e1")
+})
+
+test("turn passing: a death save outside combat has no turn", () => {
+  const r = deathSave(withDownPlayer(), saveP1, fixed(0.5))
+  assert.ok(r.isOk)
+  assert.equal(r.event.nextTurn, null)
+  assert.equal(r.state.combat, null)
+})
+
+test("turn passing: a death save that kills the last player passes no turn", () => {
+  // d20 = 9: the third failure; p2 is not in this fight
+  const s = inCombat(["p1", "e1"], "p1", crowdWith("p1", { hp: 0, saveRollFails: 2 }))
+  const r = deathSave(s, saveP1, fixed(0.4))
+  assert.ok(r.isOk)
+  assert.equal(r.event.outcome, "dead")
+  assert.equal(r.event.nextTurn, null)
+  assert.deepEqual(r.state.combat, s.combat)
 })
 
 test("state schema: combat is required, null or a valid combat", () => {

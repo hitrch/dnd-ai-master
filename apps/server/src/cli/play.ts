@@ -1,4 +1,4 @@
-import { createModel, createSampleState } from "../setup"
+import { createModel, createSampleState, maxRounds } from "../setup"
 import { GameStateService } from "../storage/gameStateService"
 import { Master } from "../master/master"
 import { createInterface } from "node:readline/promises"
@@ -8,7 +8,13 @@ const rl = createInterface({ input: stdin, output: stdout })
 const store = new GameStateService()
 const roomId = await store.createRoom(createSampleState())
 const isLogging = process.argv.includes("--debug")
-const master = new Master(store, roomId, createModel({ logging: isLogging }))
+const master = new Master(
+  store,
+  roomId,
+  createModel({ logging: isLogging }),
+  Math.random,
+  maxRounds,
+)
 const room = await store.getRoomById(roomId)
 rl.setPrompt("> ")
 

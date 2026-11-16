@@ -232,8 +232,15 @@ export class Master {
   private readonly _rng: Rng
   private readonly _maxRounds: number
 
-  constructor(store: ActionStore, roomId: string, model: ModelProvider, rng: Rng = Math.random, maxRounds: number = 5) {
-    if (!Number.isInteger(maxRounds) || maxRounds <= 0) throw new Error("Max rounds must be an integer greater than 0")
+  constructor(
+    store: ActionStore,
+    roomId: string,
+    model: ModelProvider,
+    rng: Rng = Math.random,
+    maxRounds: number = 5,
+  ) {
+    if (!Number.isInteger(maxRounds) || maxRounds <= 0)
+      throw new Error("Max rounds must be an integer greater than 0")
 
     this._store = store
     this._roomId = roomId

@@ -47,13 +47,17 @@ export type ToolMap = {
 }
 export type ToolName = keyof ToolMap
 
-export type EndTurnEvent = {
-  creatureId: string
-  creatureName: string
+export type TurnPass = {
   nextCreatureId: string
   nextCreatureName: string
   round: number
   isNewRound: boolean
+}
+
+export type EndTurnEvent = {
+  creatureId: string
+  creatureName: string
+  nextTurn: TurnPass
 }
 
 export type EndCombatEvent = {
@@ -84,6 +88,7 @@ export type DeathSaveEvent = {
   successes: number
   failures: number
   outcome: DeathOutcomeType
+  nextTurn: TurnPass | null
 }
 
 export type CheckEvent = {
@@ -137,6 +142,7 @@ export type AttackEvent = {
   hasHit: boolean
   isCritical: boolean
   damage: DamageEvent | null
+  nextTurn: TurnPass | null
 }
 
 export type GameRecord = {
@@ -147,11 +153,13 @@ export type GameRecord = {
   }
 }[keyof ToolMap]
 
+export type EngineError = {
+  isOk: false
+  errorText: string
+}
+
 export type ReturnResult<T extends ToolName> =
-  | {
-      isOk: false
-      errorText: string
-    }
+  | EngineError
   | {
       isOk: true
       event: ToolMap[T]["event"]
