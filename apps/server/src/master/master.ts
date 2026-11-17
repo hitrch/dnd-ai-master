@@ -224,29 +224,65 @@ export function executeTools(tools: ToolCall[], gameState: GameState, rng: Rng):
   return { state: draft, results }
 }
 
+export function compactHistory(
+  messages: StoryMessage[],
+  actionsToKeepFull: number,
+): StoryMessage[] {
+  let firstFullActionIndex = 0
+  let playerTextCount = 0
+
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i]
+    if (message.messageType === "player_text") {
+      firstFullActionIndex = i
+      playerTextCount++
+      if (playerTextCount === actionsToKeepFull) break
+    }
+  }
+
+  if (firstFullActionIndex) {
+    return messages.filter(
+      (m, index) =>
+        index >= firstFullActionIndex ||
+        m.messageType === "player_text" ||
+        m.messageType === "model_text",
+    )
+  }
+
+  return messages
+}
+
 export class Master {
   private readonly _roomId: string
   private readonly _store: ActionStore
-  private readonly _messages: StoryMessage[] = []
+  private _messages: StoryMessage[] = []
   private readonly _model: ModelProvider
   private readonly _rng: Rng
   private readonly _maxRounds: number
+  private readonly _actionsToKeepFull: number
 
   constructor(
     store: ActionStore,
     roomId: string,
     model: ModelProvider,
     rng: Rng = Math.random,
+    // Max model calls (rounds) per player message; the action is cancelled when exceeded.
+    // Not related to combat rounds.
     maxRounds: number = 5,
+    // Last n actions will be kept fully, while others compacted
+    actionsToKeepFull: number = 2,
   ) {
     if (!Number.isInteger(maxRounds) || maxRounds <= 0)
       throw new Error("Max rounds must be an integer greater than 0")
+    if (!Number.isInteger(actionsToKeepFull) || actionsToKeepFull <= 0)
+      throw new Error("Actions kept full must be an integer greater than 0")
 
     this._store = store
     this._roomId = roomId
     this._model = model
     this._rng = rng
     this._maxRounds = maxRounds
+    this._actionsToKeepFull = actionsToKeepFull
   }
 
   async handleMessage(text: string): Promise<string> {
@@ -266,6 +302,7 @@ export class Master {
           case "model_text": {
             await this._store.commitAction(this._roomId, draft)
             this._messages.push(...messages)
+            this._messages = compactHistory(this._messages, this._actionsToKeepFull)
             return modelResponse.text
           }
           case "tool_calls": {

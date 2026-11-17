@@ -2,7 +2,7 @@ import { test } from "node:test"
 import assert from "node:assert/strict"
 import { GameStateSchema } from "@dnd/shared"
 import type { GameState } from "@dnd/shared"
-import { executeTools, Master } from "./master"
+import { compactHistory, executeTools, Master } from "./master"
 import { modelDefinition } from "./modelDefinition"
 import { toolDefinitions } from "./toolDefinitions"
 import type { ModelProvider, ModelResponse, StoryMessage, ToolDefinition } from "../model/types"
@@ -895,4 +895,181 @@ test("handleMessage: failed start does not call the model or cancel", async () =
   await assert.rejects(master.handleMessage("Привет"), /locked/)
   assert.equal(calls.length, 0)
   assert.equal(log.cancelled, 0)
+})
+
+// --- history compaction ---
+
+const player = (text: string): StoryMessage => ({ messageType: "player_text", text })
+const callsMsg: StoryMessage = {
+  messageType: "tool_calls",
+  calls: [{ name: "roll_check", args: { characterId: "p1", skill: "stealth", dc: 10 } }],
+}
+const resultsMsg: StoryMessage = {
+  messageType: "tool_results",
+  results: [{ isOk: false, tool: "roll_check", errorText: "test" }],
+}
+
+// One finished action as Master stores it: player text, tool rounds, final model text
+function action(name: string, toolRounds = 1): StoryMessage[] {
+  const rounds = Array.from({ length: toolRounds }, () => [callsMsg, resultsMsg]).flat()
+  return [player(name), ...rounds, say(`answer ${name}`)]
+}
+
+const compacted = (name: string): StoryMessage[] => [player(name), say(`answer ${name}`)]
+
+test("compactHistory: empty history stays empty", () => {
+  assert.deepEqual(compactHistory([], 2), [])
+})
+
+test("compactHistory: fewer actions than kept are not changed", () => {
+  const history = action("a")
+  assert.deepEqual(compactHistory(history, 2), action("a"))
+})
+
+test("compactHistory: exactly the kept number of actions is not changed", () => {
+  const history = [...action("a"), ...action("b", 2)]
+  assert.deepEqual(compactHistory(history, 2), [...action("a"), ...action("b", 2)])
+})
+
+test("compactHistory: older actions keep only the player and model texts", () => {
+  const history = [...action("a", 2), ...action("b"), ...action("c"), ...action("d", 3)]
+  assert.deepEqual(compactHistory(history, 2), [
+    ...compacted("a"),
+    ...compacted("b"),
+    ...action("c"),
+    ...action("d", 3),
+  ])
+})
+
+test("compactHistory: keeping one action compacts everything before the last", () => {
+  const history = [...action("a"), ...action("b"), ...action("c", 2)]
+  assert.deepEqual(compactHistory(history, 1), [
+    ...compacted("a"),
+    ...compacted("b"),
+    ...action("c", 2),
+  ])
+})
+
+test("compactHistory: actions without tool calls are already compact", () => {
+  const history = [...compacted("a"), ...compacted("b"), ...compacted("c")]
+  assert.deepEqual(compactHistory(history, 1), [
+    ...compacted("a"),
+    ...compacted("b"),
+    ...compacted("c"),
+  ])
+})
+
+test("compactHistory: every tool call keeps its results and vice versa", () => {
+  const history = [...action("a", 2), ...action("b", 1), ...action("c", 3), ...action("d", 2)]
+  const out = compactHistory(history, 2)
+  out.forEach((m, i) => {
+    if (m.messageType === "tool_calls")
+      assert.equal(out[i + 1]?.messageType, "tool_results", `at ${i}`)
+    if (m.messageType === "tool_results")
+      assert.equal(out[i - 1]?.messageType, "tool_calls", `at ${i}`)
+  })
+})
+
+test("compactHistory: compacting twice gives the same result as once", () => {
+  const history = [...action("a", 2), ...action("b"), ...action("c")]
+  const once = compactHistory(history, 1)
+  assert.deepEqual(compactHistory(once, 1), once)
+})
+
+test("compactHistory: the input history is not mutated", () => {
+  const history = [...action("a", 2), ...action("b"), ...action("c")]
+  const copy = structuredClone(history)
+  compactHistory(history, 1)
+  assert.deepEqual(history, copy)
+})
+
+test("Master: number of full actions must be a positive integer", () => {
+  const { store } = fakeStore(state)
+  const { model } = fakeModel([])
+  for (const bad of [0, -1, 2.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+    assert.throws(() => new Master(store, ROOM, model, fixed(0.5), 5, bad), /integer/, String(bad))
+  }
+  assert.doesNotThrow(() => new Master(store, ROOM, model, fixed(0.5), 5, 1))
+})
+
+const types = (messages: StoryMessage[]) => messages.map((m) => m.messageType)
+
+test("handleMessage: older actions reach the model compacted, the last ones in full", async () => {
+  const { store } = fakeStore(state)
+  const { model, calls } = fakeModel([
+    damage("e1"),
+    say("first"),
+    damage("e1"),
+    say("second"),
+    say("third"),
+  ])
+  const master = new Master(store, ROOM, model, fixed(0.5), 5, 1)
+
+  await master.handleMessage("one")
+  await master.handleMessage("two")
+  await master.handleMessage("three")
+
+  // third message: action one compacted, action two (the last finished one) in full
+  assert.deepEqual(types(calls[4].messages), [
+    "player_text",
+    "model_text",
+    "player_text",
+    "tool_calls",
+    "tool_results",
+    "model_text",
+    "player_text",
+  ])
+  assert.deepEqual(calls[4].messages[1], say("first"))
+})
+
+test("handleMessage: the current action is not compacted between its rounds", async () => {
+  const { store } = fakeStore(state)
+  const { model, calls } = fakeModel([
+    damage("e1"),
+    say("first"),
+    damage("e1"),
+    damage("e1"),
+    say("x"),
+  ])
+  const master = new Master(store, ROOM, model, fixed(0.5), 5, 1)
+
+  await master.handleMessage("one")
+  await master.handleMessage("two")
+
+  // last round of the second message: action one in full, both rounds of the current one
+  assert.deepEqual(types(calls[4].messages), [
+    "player_text",
+    "tool_calls",
+    "tool_results",
+    "model_text",
+    "player_text",
+    "tool_calls",
+    "tool_results",
+    "tool_calls",
+    "tool_results",
+  ])
+})
+
+test("handleMessage: a failed action does not compact the history", async () => {
+  const { store } = fakeStore(state)
+  const { model, calls } = fakeModel([
+    damage("e1"),
+    say("first"),
+    damage("e1"),
+    new Error("Model is down"),
+    say("ok"),
+  ])
+  const master = new Master(store, ROOM, model, fixed(0.5), 5, 1)
+
+  await master.handleMessage("one")
+  await assert.rejects(master.handleMessage("two"))
+  await master.handleMessage("three")
+
+  assert.deepEqual(types(calls[4].messages), [
+    "player_text",
+    "tool_calls",
+    "tool_results",
+    "model_text",
+    "player_text",
+  ])
 })
