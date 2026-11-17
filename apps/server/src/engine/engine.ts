@@ -38,6 +38,16 @@ type TurnPassResult =
     }
   | EngineError
 
+type SaveRollResult = {
+  event: DeathSaveEvent
+  newCharacter: Character
+}
+
+type NextActiveCreatureInCombatResult = {
+  nextActiveCreature: Character | Enemy
+  round: number
+}
+
 export function rollD(rng: Rng, sides: number): number {
   return Math.floor(rng() * sides) + 1
 }
@@ -101,25 +111,13 @@ function hasCombatEnded(state: GameState): boolean {
   return !areBothSidesInCombat(creatures)
 }
 
-function passTurn(state: GameState): TurnPassResult {
-  if (!state.combat) return { isOk: false, errorText: `No combat is active` }
-
-  const currentActiveCreatureId = state.combat.activeCreatureId
-  const currentActiveCreatureIndex = state.combat.order.findIndex(
-    (id) => id === currentActiveCreatureId,
-  )
-  const creatures = getCreaturesInCombat(state)
-
-  if (creatures.length !== state.combat.order.length)
-    return { isOk: false, errorText: "Unidentified element in combat" }
-
-  const currentActiveCreature = creatures[currentActiveCreatureIndex]
-  if (!currentActiveCreature)
-    return { isOk: false, errorText: `No creature found with id ${currentActiveCreatureId}` }
-
+function findNextActiveCreatureInCombat(
+  creatures: (Character | Enemy)[],
+  initialRound: number,
+  currentActiveCreatureIndex: number,
+): NextActiveCreatureInCombatResult | EngineError {
   let nextActiveCreature
-  let round = state.combat.round
-  let isNewRound = false
+  let round = initialRound
   for (let i = 1; i < creatures.length; i++) {
     const currentIndex = (i + currentActiveCreatureIndex) % creatures.length
     const creature = creatures[currentIndex]
@@ -127,7 +125,6 @@ function passTurn(state: GameState): TurnPassResult {
       nextActiveCreature = creature
       if (currentIndex < currentActiveCreatureIndex) {
         round++
-        isNewRound = true
       }
       break
     }
@@ -139,21 +136,143 @@ function passTurn(state: GameState): TurnPassResult {
       errorText: "No creatures left in combat.",
     }
 
-  const combat: Combat = {
-    ...state.combat,
-    round,
-    activeCreatureId: nextActiveCreature.id,
+  return { nextActiveCreature, round }
+}
+
+function passTurn(state: GameState, rng: Rng): TurnPassResult {
+  if (!state.combat) return { isOk: false, errorText: `No combat is active` }
+
+  const currentActiveCreatureId = state.combat.activeCreatureId
+  const currentActiveCreatureIndex = state.combat.order.findIndex(
+    (id) => id === currentActiveCreatureId,
+  )
+  let creatures = getCreaturesInCombat(state)
+
+  if (creatures.length !== state.combat.order.length)
+    return { isOk: false, errorText: "Unidentified element in combat" }
+
+  const currentActiveCreature = creatures[currentActiveCreatureIndex]
+  if (!currentActiveCreature)
+    return { isOk: false, errorText: `No creature found with id ${currentActiveCreatureId}` }
+
+  let nextActiveCreatureResult = findNextActiveCreatureInCombat(
+    creatures,
+    state.combat.round,
+    currentActiveCreatureIndex,
+  )
+  if ("isOk" in nextActiveCreatureResult) return nextActiveCreatureResult
+
+  let newState: GameState = state
+  let combat: Combat = state.combat
+  let nextActiveCreature: Character | Enemy = nextActiveCreatureResult.nextActiveCreature
+  const initialRound = state.combat.round
+  let currentRound = nextActiveCreatureResult.round
+  let isCombatOver = false
+  const saveEvents: DeathSaveEvent[] = []
+
+  while (true) {
+    nextActiveCreature = nextActiveCreatureResult.nextActiveCreature
+    currentRound = nextActiveCreatureResult.round
+    combat = { ...combat, round: currentRound, activeCreatureId: nextActiveCreature.id }
+    newState = { ...newState, combat }
+
+    // when player downed and not stabilized
+    if (isCharacter(nextActiveCreature)) {
+      if (nextActiveCreature.hp === 0 && !nextActiveCreature.isStabilizedAfterSave) {
+        const { event, newCharacter } = saveRoll(nextActiveCreature, rng)
+        saveEvents.push(event)
+        newState = {
+          ...newState,
+          combat,
+          players: changeCreatureInList(newState.players, newCharacter),
+        }
+
+        // revived and active on crit
+        if (event.outcome === "regainedConsciousness") break
+      }
+    }
+
+    creatures = getCreaturesInCombat(newState)
+    if (!areBothSidesInCombat(creatures)) {
+      isCombatOver = true
+      break
+    }
+    if (nextActiveCreature.hp > 0) break
+
+    const newActiveCreatureIndex = combat.order.findIndex((id) => id === nextActiveCreature.id)
+    nextActiveCreatureResult = findNextActiveCreatureInCombat(
+      creatures,
+      combat.round,
+      newActiveCreatureIndex,
+    )
+    if ("isOk" in nextActiveCreatureResult) return nextActiveCreatureResult
   }
+
   return {
-    state: {
-      ...state,
-      combat,
-    },
+    state: newState,
     nextTurn: {
       nextCreatureId: nextActiveCreature.id,
       nextCreatureName: nextActiveCreature.name,
-      round,
-      isNewRound,
+      round: currentRound,
+      isNewRound: initialRound !== currentRound,
+      isCombatOver,
+      saveEvents,
+    },
+  }
+}
+
+function saveRoll(character: Character, rng: Rng): SaveRollResult {
+  const roll = rollD(rng, 20)
+  let currentSuccesses = character.saveRollSuccesses
+  let currentFailures = character.saveRollFails
+  let outcome: DeathOutcomeType
+  let isStabilizedAfterSave = false
+  let hp = 0
+
+  if (roll === 20) {
+    hp = 1
+    outcome = "regainedConsciousness"
+    currentSuccesses = 0
+    currentFailures = 0
+  } else if (roll === 1) {
+    currentFailures = Math.min(3, currentFailures + 2)
+    outcome = "failure"
+  } else if (roll >= 10) {
+    currentSuccesses += 1
+    outcome = "success"
+  } else {
+    currentFailures += 1
+    outcome = "failure"
+  }
+
+  if (currentSuccesses === 3) {
+    outcome = "stable"
+    isStabilizedAfterSave = true
+    currentSuccesses = 0
+    currentFailures = 0
+  }
+
+  if (currentFailures === 3) {
+    outcome = "dead"
+  }
+
+  const event: DeathSaveEvent = {
+    characterId: character.id,
+    characterName: character.name,
+    roll,
+    successes: currentSuccesses,
+    failures: currentFailures,
+    outcome,
+  }
+
+  return {
+    event,
+    newCharacter: {
+      ...character,
+      saveRollFails: currentFailures,
+      saveRollSuccesses: currentSuccesses,
+      isStabilizedAfterSave,
+      hp,
     },
   }
 }
@@ -391,7 +510,7 @@ export function attack(
   let nextTurn: TurnPass | null = null
 
   if (!hasCombatEnded(nextState)) {
-    const result = passTurn(nextState)
+    const result = passTurn(nextState, rng)
     if ("isOk" in result) return result
     nextState = result.state
     nextTurn = result.nextTurn
@@ -416,78 +535,20 @@ export function deathSave(
     return { isOk: false, errorText: `Character is dead: ${character.name}` }
   if (character.isStabilizedAfterSave)
     return { isOk: false, errorText: `Character ${character.name} is stabilized` }
-  if (state.combat && character.id !== state.combat.activeCreatureId)
+  if (state.combat)
     return {
       isOk: false,
-      errorText: `Player with id ${character.id} is not the active one ${state.combat.activeCreatureId}`,
+      errorText:
+        "death_save is not used in combat: death saves are rolled automatically when the turn passes to a dying character",
     }
 
-  const roll = rollD(rng, 20)
-  let currentSuccesses = character.saveRollSuccesses
-  let currentFailures = character.saveRollFails
-  let outcome: DeathOutcomeType
-  let isStabilizedAfterSave = false
-  let hp = 0
-
-  if (roll === 20) {
-    hp = 1
-    outcome = "regainedConsciousness"
-    currentSuccesses = 0
-    currentFailures = 0
-  } else if (roll === 1) {
-    currentFailures = Math.min(3, currentFailures + 2)
-    outcome = "failure"
-  } else if (roll >= 10) {
-    currentSuccesses += 1
-    outcome = "success"
-  } else {
-    currentFailures += 1
-    outcome = "failure"
-  }
-
-  if (currentSuccesses === 3) {
-    outcome = "stable"
-    isStabilizedAfterSave = true
-    currentSuccesses = 0
-    currentFailures = 0
-  }
-
-  if (currentFailures === 3) {
-    outcome = "dead"
-  }
-
-  const event: DeathSaveEvent = {
-    characterId: character.id,
-    characterName: character.name,
-    roll,
-    successes: currentSuccesses,
-    failures: currentFailures,
-    outcome,
-    nextTurn: null,
-  }
-
-  const players = changeCreatureInList(state.players, {
-    ...character,
-    saveRollFails: currentFailures,
-    saveRollSuccesses: currentSuccesses,
-    isStabilizedAfterSave,
-    hp,
-  })
-  let nextState = { ...state, players }
-  let nextTurn: TurnPass | null = null
-
-  // when player rolls 20 he can act
-  if (roll !== 20 && !hasCombatEnded(nextState)) {
-    const result = passTurn(nextState)
-    if ("isOk" in result) return result
-    nextTurn = result.nextTurn
-    nextState = result.state
-  }
+  const { event, newCharacter } = saveRoll(character, rng)
+  const players = changeCreatureInList(state.players, newCharacter)
 
   return {
     isOk: true,
-    event: { ...event, nextTurn },
-    state: nextState,
+    event: event,
+    state: { ...state, players },
   }
 }
 
@@ -563,7 +624,11 @@ export function endCombat(state: GameState): ReturnResult<"end_combat"> {
   }
 }
 
-export function endTurn(state: GameState, args: EndTurnArgs): ReturnResult<"end_turn"> {
+export function endTurn(
+  state: GameState,
+  args: EndTurnArgs,
+  rng: Rng = Math.random,
+): ReturnResult<"end_turn"> {
   if (!state.combat) return { isOk: false, errorText: `No combat is active` }
   if (hasCombatEnded(state))
     return {
@@ -579,7 +644,7 @@ export function endTurn(state: GameState, args: EndTurnArgs): ReturnResult<"end_
   if (!currentActiveCreature)
     return { isOk: false, errorText: `Creature with id: ${args.creatureId} is not found` }
 
-  const result = passTurn(state)
+  const result = passTurn(state, rng)
   if ("isOk" in result) return result
 
   return {

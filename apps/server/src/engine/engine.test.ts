@@ -405,7 +405,6 @@ test("death save: 10 is a success and fills the event", () => {
     successes: 1,
     failures: 0,
     outcome: "success",
-    nextTurn: null,
   })
   assert.equal(r.state.players[0].saveRollSuccesses, 1)
   assert.equal(r.state.players[0].saveRollFails, 0)
@@ -1090,6 +1089,8 @@ test("end turn: passes the turn to the next creature and fills the event", () =>
       nextCreatureName: "Гоблин-часовой",
       round: 1,
       isNewRound: false,
+      isCombatOver: false,
+      saveEvents: [],
     },
   })
   assert.deepEqual(r.state.combat, {
@@ -1128,16 +1129,12 @@ test("end turn: an enemy at 0 HP is skipped", () => {
   assert.equal(r.event.nextTurn.isNewRound, false)
 })
 
-test("end turn: a dead player is skipped, a down but living player gets the turn", () => {
+test("end turn: a dead player is skipped without a roll", () => {
   const dead = inCombat(["e1", "p1", "p2"], "e1", crowdWith("p1", { hp: 0, saveRollFails: 3 }))
-  const skipped = endTurn(dead, { creatureId: "e1" })
+  const skipped = endTurn(dead, { creatureId: "e1" }, sequence().rng)
   assert.ok(skipped.isOk)
   assert.equal(skipped.event.nextTurn.nextCreatureId, "p2")
-
-  const down = inCombat(["e1", "p1", "p2"], "e1", crowdWith("p1", { hp: 0, saveRollFails: 2 }))
-  const kept = endTurn(down, { creatureId: "e1" })
-  assert.ok(kept.isOk)
-  assert.equal(kept.event.nextTurn.nextCreatureId, "p1")
+  assert.deepEqual(skipped.event.nextTurn.saveEvents, [])
 })
 
 test("end turn: skipping past the end of the order starts a new round", () => {
@@ -1220,22 +1217,14 @@ test("turns: outside combat anyone can attack, including an ally", () => {
   assert.ok(r.isOk)
 })
 
-test("turns: in combat a death save only on the character's own turn", () => {
+test("turns: death_save is refused in combat, even on the character's own turn, nothing is rolled", () => {
   const down = crowdWith("p1", { hp: 0 })
-  const refused = deathSave(inCombat(["p1", "e1"], "e1", down), saveP1, sequence().rng)
-  assert.equal(refused.isOk, false)
-
-  const own = deathSave(inCombat(["p1", "e1"], "p1", down), saveP1, fixed(0.5))
-  assert.ok(own.isOk)
-})
-
-test("turns: a death save ends the turn, a second one on the same turn is refused", () => {
-  // the model once called death_save twice in one message
-  const s = inCombat(["p1", "e1"], "p1", crowdWith("p1", { hp: 0 }))
-  const first = deathSave(s, saveP1, fixed(0.5))
-  assert.ok(first.isOk)
-  const second = deathSave(first.state, saveP1, sequence().rng)
-  assert.equal(second.isOk, false)
+  for (const active of ["p1", "e1"]) {
+    const r = deathSave(inCombat(["p1", "e1"], active, down), saveP1, sequence().rng)
+    assert.equal(r.isOk, false, active)
+    // the text tells the model the save is automatic
+    assert.match(r.isOk ? "" : r.errorText, /automatic/, active)
+  }
 })
 
 // ---------- turn passing by actions ----------
@@ -1253,6 +1242,8 @@ test("turn passing: a hit in combat passes the turn and the event tells who is n
     nextCreatureName: "Гоблин-часовой",
     round: 1,
     isNewRound: false,
+    isCombatOver: false,
+    saveEvents: [],
   })
   assert.deepEqual(r.state.combat, {
     order: ["p1", "e1", "p2", "e2"],
@@ -1292,6 +1283,8 @@ test("turn passing: an attack by the last creature in the order starts a new rou
     nextCreatureName: "Арвен",
     round: 2,
     isNewRound: true,
+    isCombatOver: false,
+    saveEvents: [],
   })
   assert.deepEqual(r.state.combat, { order: ["p1", "e1"], round: 2, activeCreatureId: "p1" })
 })
@@ -1326,49 +1319,163 @@ test("turn passing: an attack refused in combat changes nothing", () => {
   assert.equal(s.combat?.activeCreatureId, "p1")
 })
 
-test("turn passing: a death save in combat passes the turn", () => {
-  // d20 = 11: a success
-  const s = inCombat(["p1", "e1"], "p1", crowdWith("p1", { hp: 0 }))
-  const r = deathSave(s, saveP1, fixed(0.5))
+test("turn passing: a death save outside combat passes no turn and has no turn field", () => {
+  const r = deathSave(withDownPlayer(), saveP1, fixed(0.5))
   assert.ok(r.isOk)
-  assert.equal(r.event.outcome, "success")
+  assert.equal("nextTurn" in r.event, false)
+  assert.equal(r.state.combat, null)
+})
+
+// ---------- automatic death saves when the turn passes ----------
+// Arwen (p1) is down in a fight with the goblin: order [p1, e1], the goblin's turn
+
+const arwenDown = (patch: Partial<Player> = {}) =>
+  inCombat(["p1", "e1"], "e1", crowdWith("p1", { hp: 0, ...patch }))
+
+test("auto death save: the turn of a dying character rolls the save and goes on", () => {
+  const { rng, calls } = sequence(d20(15))
+  const r = endTurn(arwenDown(), { creatureId: "e1" }, rng)
+  assert.ok(r.isOk)
   assert.deepEqual(r.event.nextTurn, {
     nextCreatureId: "e1",
     nextCreatureName: "Гоблин-часовой",
-    round: 1,
-    isNewRound: false,
+    round: 2,
+    isNewRound: true,
+    isCombatOver: false,
+    saveEvents: [
+      {
+        characterId: "p1",
+        characterName: "Арвен",
+        roll: 15,
+        successes: 1,
+        failures: 0,
+        outcome: "success",
+      },
+    ],
   })
-  assert.equal(r.state.combat?.activeCreatureId, "e1")
+  assert.deepEqual(r.state.combat, { order: ["p1", "e1"], round: 2, activeCreatureId: "e1" })
+  assert.equal(r.state.players[0].saveRollSuccesses, 1)
+  assert.equal(r.state.players[0].hp, 0)
+  assert.equal(calls(), 1)
 })
 
-test("turn passing: a natural 20 on a death save keeps the turn, the character acts at once", () => {
-  const s = inCombat(["p1", "e1"], "p1", crowdWith("p1", { hp: 0 }))
-  const r = deathSave(s, saveP1, fixed(0.999))
+test("auto death save: a failure is recorded and the turn goes on", () => {
+  const r = endTurn(arwenDown({ saveRollFails: 1 }), { creatureId: "e1" }, sequence(d20(5)).rng)
   assert.ok(r.isOk)
-  assert.equal(r.event.outcome, "regainedConsciousness")
-  assert.equal(r.event.nextTurn, null)
-  assert.equal(r.state.combat?.activeCreatureId, "p1")
-  // the same turn goes on with an attack, and that attack passes the turn
+  assert.equal(r.event.nextTurn.nextCreatureId, "e1")
+  assert.equal(r.event.nextTurn.saveEvents[0].outcome, "failure")
+  assert.equal(r.state.players[0].saveRollFails, 2)
+})
+
+test("auto death save: a natural 20 wakes the character and keeps the turn with them", () => {
+  const r = endTurn(arwenDown({ saveRollFails: 2 }), { creatureId: "e1" }, sequence(d20(20)).rng)
+  assert.ok(r.isOk)
+  assert.equal(r.event.nextTurn.nextCreatureId, "p1")
+  assert.equal(r.event.nextTurn.round, 2)
+  assert.equal(r.event.nextTurn.isNewRound, true)
+  assert.equal(r.event.nextTurn.isCombatOver, false)
+  assert.equal(r.event.nextTurn.saveEvents[0].outcome, "regainedConsciousness")
+  // the state agrees with the event: Arwen is up and it is her turn
+  assert.deepEqual(r.state.combat, { order: ["p1", "e1"], round: 2, activeCreatureId: "p1" })
+  assert.equal(r.state.players[0].hp, 1)
+  // she acts at once, and her attack passes the turn back to the goblin
   const hit = attack(r.state, daggerAtGoblin, sequence(0.5, 0.5).rng)
   assert.ok(hit.isOk)
   assert.equal(hit.state.combat?.activeCreatureId, "e1")
 })
 
-test("turn passing: a death save outside combat has no turn", () => {
-  const r = deathSave(withDownPlayer(), saveP1, fixed(0.5))
+test("auto death save: three successes stabilize, the turn goes on", () => {
+  const r = endTurn(
+    arwenDown({ saveRollSuccesses: 2 }),
+    { creatureId: "e1" },
+    sequence(d20(12)).rng,
+  )
   assert.ok(r.isOk)
-  assert.equal(r.event.nextTurn, null)
-  assert.equal(r.state.combat, null)
+  assert.equal(r.event.nextTurn.saveEvents[0].outcome, "stable")
+  assert.equal(r.event.nextTurn.nextCreatureId, "e1")
+  assert.equal(r.state.players[0].isStabilizedAfterSave, true)
 })
 
-test("turn passing: a death save that kills the last player passes no turn", () => {
-  // d20 = 9: the third failure; p2 is not in this fight
-  const s = inCombat(["p1", "e1"], "p1", crowdWith("p1", { hp: 0, saveRollFails: 2 }))
-  const r = deathSave(s, saveP1, fixed(0.4))
+test("auto death save: a save that kills the last character ends the fight, not an error", () => {
+  const before = arwenDown({ saveRollFails: 2 })
+  const r = endTurn(before, { creatureId: "e1" }, sequence(d20(5)).rng)
   assert.ok(r.isOk)
-  assert.equal(r.event.outcome, "dead")
-  assert.equal(r.event.nextTurn, null)
-  assert.deepEqual(r.state.combat, s.combat)
+  assert.equal(r.event.nextTurn.isCombatOver, true)
+  assert.equal(r.event.nextTurn.saveEvents.length, 1)
+  assert.equal(r.event.nextTurn.saveEvents[0].outcome, "dead")
+  // the death is kept in the state; the next step is end_combat
+  assert.equal(r.state.players[0].saveRollFails, 3)
+  assert.ok(endCombat(r.state).isOk)
+})
+
+test("auto death save: a stable character is skipped without a roll", () => {
+  const r = endTurn(
+    arwenDown({ isStabilizedAfterSave: true }),
+    { creatureId: "e1" },
+    sequence().rng,
+  )
+  assert.ok(r.isOk)
+  assert.equal(r.event.nextTurn.nextCreatureId, "e1")
+  assert.equal(r.event.nextTurn.round, 2)
+  assert.deepEqual(r.event.nextTurn.saveEvents, [])
+  assert.equal(r.state.players[0].isStabilizedAfterSave, true)
+})
+
+test("auto death save: two dying characters in a row both roll, in turn order", () => {
+  const both: GameState = {
+    ...crowd,
+    players: crowd.players.map((p) => ({ ...p, hp: 0 })),
+    combat: { order: ["e1", "p1", "p2"], round: 1, activeCreatureId: "e1" },
+  }
+  const { rng, calls } = sequence(d20(15), d20(5))
+  const r = endTurn(both, { creatureId: "e1" }, rng)
+  assert.ok(r.isOk)
+  assert.deepEqual(
+    r.event.nextTurn.saveEvents.map((e) => [e.characterId, e.outcome]),
+    [
+      ["p1", "success"],
+      ["p2", "failure"],
+    ],
+  )
+  assert.equal(r.event.nextTurn.nextCreatureId, "e1")
+  assert.equal(r.event.nextTurn.round, 2)
+  assert.equal(r.state.players[0].saveRollSuccesses, 1)
+  assert.equal(r.state.players[1].saveRollFails, 1)
+  assert.equal(calls(), 2)
+})
+
+test("auto death save: a new round that starts after the save is still counted", () => {
+  // the goblin passes to p2 (dying, no new round), then over the end of the order to p1
+  const s = inCombat(["p1", "e1", "p2"], "e1", crowdWith("p2", { hp: 0 }))
+  const r = endTurn(s, { creatureId: "e1" }, sequence(d20(15)).rng)
+  assert.ok(r.isOk)
+  assert.equal(r.event.nextTurn.nextCreatureId, "p1")
+  assert.equal(r.event.nextTurn.round, 2)
+  assert.equal(r.event.nextTurn.isNewRound, true)
+  assert.deepEqual(r.state.combat, { order: ["p1", "e1", "p2"], round: 2, activeCreatureId: "p1" })
+})
+
+test("auto death save: an attack passes the turn the same way", () => {
+  // the goblin hits Arwen at 0 HP (d20 11 + 4 = 15 vs AC 14, d6 = 4): one failure from damage,
+  // then her turn comes and she rolls the save (15): a success
+  const { rng, calls } = sequence(0.5, 0.5, d20(15))
+  const r = attack(arwenDown(), scimitarAtArwen, rng)
+  assert.ok(r.isOk)
+  assert.equal(r.event.damage?.outcome, "down")
+  assert.equal(r.event.nextTurn?.nextCreatureId, "e1")
+  assert.equal(r.event.nextTurn?.round, 2)
+  assert.equal(r.event.nextTurn?.saveEvents[0].outcome, "success")
+  assert.equal(r.state.players[0].saveRollFails, 1)
+  assert.equal(r.state.players[0].saveRollSuccesses, 1)
+  assert.equal(calls(), 3)
+})
+
+test("auto death save: the original state is not mutated", () => {
+  const s = arwenDown()
+  const before = structuredClone(s)
+  const r = endTurn(s, { creatureId: "e1" }, sequence(d20(15)).rng)
+  assert.ok(r.isOk)
+  assert.deepEqual(s, before)
 })
 
 test("state schema: combat is required, null or a valid combat", () => {

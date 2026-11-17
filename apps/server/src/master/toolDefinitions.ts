@@ -30,10 +30,9 @@ export const ToolDescriptions = {
     "For example 1d6 for a small fall, 2d6 for a fall from a tower floor; bonus 0 unless there is a clear reason. " +
     damageOutcomeDescription,
   death_save:
-    "Death saving throw for a player character at 0 hit points who is still dying (not stable, not dead). " +
-    "Call it instead of whatever the dying character tries to do; in combat on their own turn, and it ends the turn. " +
-    "Outcomes: success, failure, stable (unconscious, no longer dying), dead, " +
-    "regainedConsciousness (a natural 20: awake with 1 hit point, the turn goes on).",
+    "Death saving throw for a player character at 0 hit points who is still dying (not stable, not dead), " +
+    "only outside combat: in combat the engine rolls it when the turn passes. " +
+    "Call it instead of whatever the dying character tries to do.",
   apply_heal:
     "Restores hit points to a player character or an enemy. " +
     "Call it only when a real source exists: a spell or ability listed for the creature in the game state, " +
@@ -55,8 +54,8 @@ export const ToolDescriptions = {
     "or the characters have escaped. Not while any enemy still fights. " +
     "Call it in the same response in which the last enemy falls.",
   end_turn:
-    "Ends the turn of the active creature (combat.activeCreatureId) that did not attack or make a death save " +
-    "(those end the turn themselves): it talked, moved, hid or did nothing.",
+    "Ends the turn of the active creature (combat.activeCreatureId) that did not attack " +
+    "(an attack ends the turn itself): it talked, moved, hid or did nothing.",
 } satisfies Record<ToolName, string>
 
 export const toolDefinitions: ToolDefinition[] = Object.keys(ToolArgsSchemas).map((tool) => {

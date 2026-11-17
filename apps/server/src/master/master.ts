@@ -200,7 +200,7 @@ export function executeTools(tools: ToolCall[], gameState: GameState, rng: Rng):
           continue
         }
 
-        const endTurnResult = endTurn(draft, endTurnArgs.data)
+        const endTurnResult = endTurn(draft, endTurnArgs.data, rng)
         if (!endTurnResult.isOk) {
           fail(call.name, endTurnResult.errorText)
           continue

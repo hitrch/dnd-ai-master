@@ -52,6 +52,8 @@ export type TurnPass = {
   nextCreatureName: string
   round: number
   isNewRound: boolean
+  isCombatOver: boolean
+  saveEvents: DeathSaveEvent[]
 }
 
 export type EndTurnEvent = {
@@ -88,7 +90,6 @@ export type DeathSaveEvent = {
   successes: number
   failures: number
   outcome: DeathOutcomeType
-  nextTurn: TurnPass | null
 }
 
 export type CheckEvent = {

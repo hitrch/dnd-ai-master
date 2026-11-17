@@ -212,6 +212,20 @@ test("end_turn call is executed by the engine and recorded", () => {
   assert.equal(r.state.combat?.activeCreatureId, "e1")
 })
 
+test("end_turn: rng reaches the automatic death save of a dying character", () => {
+  // the goblin ends its turn, Arwen at 0 HP is next: her save rolls 20 with this rng
+  const fighting = {
+    ...state,
+    players: state.players.map((p) => ({ ...p, hp: 0 })),
+    combat: { order: ["p1", "e1"], round: 1, activeCreatureId: "e1" },
+  }
+  const r = executeTools([{ name: "end_turn", args: { creatureId: "e1" } }], fighting, fixed(0.999))
+  const rec = r.results[0]
+  assert.ok(rec.isOk && rec.tool === "end_turn")
+  assert.equal(rec.event.nextTurn.saveEvents[0]?.roll, 20)
+  assert.equal(r.state.players[0].hp, 1)
+})
+
 test("end_turn refused by the engine returns a failed result", () => {
   const r = executeTools([{ name: "end_turn", args: { creatureId: "p1" } }], state, fixed(0.5))
   failureText(r.results[0], "end_turn")

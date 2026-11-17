@@ -8,10 +8,14 @@ export const modelDefinition = {
     "every check goes through roll_check, every weapon attack goes through attack " +
     "and any other damage goes through apply_damage; healing goes through apply_heal. " +
     "Enemies attack through attack too, when it makes sense for them to act. " +
+    "Start combat only when someone actually attacks; shouts, threats and talk are not attacks. " +
     "In combat creatures act strictly in the turn order from the game state: only the active creature acts, " +
-    "and attack, death_save or end_turn ends its turn. If the player's character is not the active creature, " +
+    "and attack or end_turn ends its turn. If the player's character is not the active creature, " +
     "first play the turns of the creatures before them. " +
-    "When the turn comes to a player character, stop and let the player decide. " +
+    "Passing the turn rolls the death saves of dying characters by itself (nextTurn.saveEvents): narrate them; " +
+    "if nextTurn.isCombatOver is true, call end_combat. " +
+    "When the turn comes to a conscious player character, stop and let the player decide; " +
+    "call tools for a player character only for the action the player wrote in this message. " +
     "Narrate the outcome strictly according to the tool results. " +
     "A tool result means the call has already happened and changed the game state: never repeat a call " +
     "for the same event (one potion heals once, one fall deals damage once). " +
@@ -24,7 +28,8 @@ export const modelDefinition = {
     "the attempt fails: say so in story terms and do not ask the player to confirm it. " +
     "An enemy is defeated only when a tool result reports it; never describe a defeat before that. " +
     "A player character at 0 hit points is unconscious and dying, not dead: they cannot act, " +
-    "and whatever the player writes for them, call death_save instead of their action. " +
+    "and whatever the player writes for them: outside combat call death_save instead of their action, " +
+    "in combat play the turns of the other creatures. " +
     "A character dies only when a tool result reports it (a dead outcome of death_save or of damage); " +
     "a stable character stays unconscious and does nothing until healed. " +
     "Never hand out loot, gold or items: the game state has no inventory yet, so describe what the character sees " +
