@@ -50,9 +50,9 @@ export const ToolDescriptions = {
     "they are not in this fight. " +
     "Equal initiative keeps the order of participantIds.",
   end_combat:
-    "Ends combat when the fight is over: every enemy in it is dead, has fled or has surrendered, " +
-    "or the characters have escaped. Not while any enemy still fights. " +
-    "Call it in the same response in which the last enemy falls.",
+    "Ends combat when the fight stops with both sides still standing: the enemies fled or surrendered, " +
+    "or the characters escaped. Not while any enemy still fights. " +
+    "When one side falls, the engine has already ended combat (combatEnd in the result): do not call it then.",
   end_turn:
     "Ends the turn of the active creature (combat.activeCreatureId) that did not attack " +
     "(an attack ends the turn itself): it talked, moved, hid or did nothing.",

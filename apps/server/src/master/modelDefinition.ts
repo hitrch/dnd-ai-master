@@ -12,8 +12,8 @@ export const modelDefinition = {
     "In combat creatures act strictly in the turn order from the game state: only the active creature acts, " +
     "and attack or end_turn ends its turn. If the player's character is not the active creature, " +
     "first play the turns of the creatures before them. " +
-    "Passing the turn rolls the death saves of dying characters by itself (nextTurn.saveEvents): narrate them; " +
-    "if nextTurn.isCombatOver is true, call end_combat. " +
+    "Passing the turn rolls the death saves of dying characters by itself (saveEvents): narrate them. " +
+    "A result with combatEnd means the fight is over and combat has ended; nobody takes the next turn. " +
     "When the turn comes to a conscious player character, stop and let the player decide; " +
     "call tools for a player character only for the action the player wrote in this message. " +
     "Narrate the outcome strictly according to the tool results. " +

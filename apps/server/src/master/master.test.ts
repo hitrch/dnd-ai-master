@@ -92,8 +92,8 @@ test("result contains parsed args and the engine event", () => {
   const rec = r.results[0]
   assert.ok(rec.isOk && rec.tool === "apply_damage")
   assert.deepEqual(rec.args, { targetId: "e1", ...d4 })
-  assert.equal(rec.event.hpBefore, 7)
-  assert.equal(rec.event.hpAfter, 4)
+  assert.equal(rec.event.damage.hpBefore, 7)
+  assert.equal(rec.event.damage.hpAfter, 4)
 })
 
 test("attack call is executed by the engine and recorded", () => {
@@ -208,7 +208,7 @@ test("end_turn call is executed by the engine and recorded", () => {
   const rec = r.results[0]
   assert.ok(rec.isOk && rec.tool === "end_turn")
   assert.deepEqual(rec.args, { creatureId: "p1" })
-  assert.equal(rec.event.nextTurn.nextCreatureId, "e1")
+  assert.equal(rec.event.nextTurn?.nextCreatureId, "e1")
   assert.equal(r.state.combat?.activeCreatureId, "e1")
 })
 
@@ -222,7 +222,7 @@ test("end_turn: rng reaches the automatic death save of a dying character", () =
   const r = executeTools([{ name: "end_turn", args: { creatureId: "e1" } }], fighting, fixed(0.999))
   const rec = r.results[0]
   assert.ok(rec.isOk && rec.tool === "end_turn")
-  assert.equal(rec.event.nextTurn.saveEvents[0]?.roll, 20)
+  assert.equal(rec.event.saveEvents[0]?.roll, 20)
   assert.equal(r.state.players[0].hp, 1)
 })
 
@@ -354,8 +354,8 @@ test("each call sees the state produced by the previous one", () => {
   )
   const second = r.results[1]
   assert.ok(second.isOk && second.tool === "apply_damage")
-  assert.equal(second.event.hpBefore, 4)
-  assert.equal(second.event.hpAfter, 1)
+  assert.equal(second.event.damage.hpBefore, 4)
+  assert.equal(second.event.damage.hpAfter, 1)
   assert.equal(r.state.enemies[0].hp, 1)
 })
 
@@ -367,8 +367,8 @@ test("rng is passed to the engine for damage", () => {
   )
   const rec = r.results[0]
   assert.ok(rec.isOk && rec.tool === "apply_damage")
-  assert.deepEqual(rec.event.rolls, [1])
-  assert.equal(rec.event.amount, 1)
+  assert.deepEqual(rec.event.damage.rolls, [1])
+  assert.equal(rec.event.damage.amount, 1)
 })
 
 test("damage tool schema shows the model the allowed dice", () => {
@@ -712,8 +712,8 @@ test("handleMessage: model sees its tool calls and their results in the next rou
   assert.equal(results.results.length, 1)
   const rec = results.results[0]
   assert.ok(rec.isOk && rec.tool === "apply_damage")
-  assert.equal(rec.event.hpBefore, 7)
-  assert.equal(rec.event.hpAfter, 4)
+  assert.equal(rec.event.damage.hpBefore, 7)
+  assert.equal(rec.event.damage.hpAfter, 4)
 })
 
 test("handleMessage: several tool rounds share one draft", async () => {

@@ -22,6 +22,7 @@ import {
   Combat,
   DeathSaveEvent,
   TurnPass,
+  EndCombatEvent,
 } from "@dnd/shared"
 
 // Random number generator in [0, 1). Math.random in the game, replaced in tests.
@@ -34,7 +35,8 @@ interface RollAndApplyDamageResult {
 type TurnPassResult =
   | {
       state: GameState
-      nextTurn: TurnPass
+      nextTurn: TurnPass | null
+      saveEvents: DeathSaveEvent[]
     }
   | EngineError
 
@@ -46,6 +48,16 @@ type SaveRollResult = {
 type NextActiveCreatureInCombatResult = {
   nextActiveCreature: Character | Enemy
   round: number
+}
+
+type CloseCombatHelperResult = {
+  state: GameState
+  combatEnd: EndCombatEvent
+}
+
+type EndCombatIfOverResult = {
+  state: GameState
+  combatEnd: EndCombatEvent | null
 }
 
 export function rollD(rng: Rng, sides: number): number {
@@ -102,6 +114,20 @@ function areBothSidesInCombat(list: (Character | Enemy)[]): boolean {
 function getCreaturesInCombat(state: GameState): (Character | Enemy)[] {
   if (!state.combat) return []
   return state.combat.order.map((id) => findCreatureById(state, id)).filter((c) => !!c)
+}
+
+function closeCombatHelper(state: GameState, combat: Combat): CloseCombatHelperResult {
+  return { state: { ...state, combat: null }, combatEnd: { lastRound: combat.round } }
+}
+
+// Closes the combat when one side has nobody left who can fight; otherwise (or with no combat
+// at all) returns the state unchanged with combatEnd: null. The only place where combat ends
+// by itself: call it at the end of every tool that can kill in combat (attack, applyDamage, endTurn).
+function endCombatIfOver(state: GameState): EndCombatIfOverResult {
+  if (!hasCombatEnded(state) || !state.combat) {
+    return { state, combatEnd: null }
+  }
+  return closeCombatHelper(state, state.combat)
 }
 
 // True when one side has nobody left who can fight. Also true when there is no combat at all
@@ -167,7 +193,6 @@ function passTurn(state: GameState, rng: Rng): TurnPassResult {
   let nextActiveCreature: Character | Enemy = nextActiveCreatureResult.nextActiveCreature
   const initialRound = state.combat.round
   let currentRound = nextActiveCreatureResult.round
-  let isCombatOver = false
   const saveEvents: DeathSaveEvent[] = []
 
   while (true) {
@@ -194,7 +219,6 @@ function passTurn(state: GameState, rng: Rng): TurnPassResult {
 
     creatures = getCreaturesInCombat(newState)
     if (!areBothSidesInCombat(creatures)) {
-      isCombatOver = true
       break
     }
     if (nextActiveCreature.hp > 0) break
@@ -208,16 +232,20 @@ function passTurn(state: GameState, rng: Rng): TurnPassResult {
     if ("isOk" in nextActiveCreatureResult) return nextActiveCreatureResult
   }
 
-  return {
-    state: newState,
-    nextTurn: {
+  let nextTurn: TurnPass | null = null
+  if (!hasCombatEnded(newState)) {
+    nextTurn = {
       nextCreatureId: nextActiveCreature.id,
       nextCreatureName: nextActiveCreature.name,
       round: currentRound,
       isNewRound: initialRound !== currentRound,
-      isCombatOver,
-      saveEvents,
-    },
+    }
+  }
+
+  return {
+    state: newState,
+    nextTurn,
+    saveEvents,
   }
 }
 
@@ -397,10 +425,14 @@ export function applyDamage(
   if (targetError) return { isOk: false, errorText: targetError }
 
   const result = rollAndApplyDamage(state, target, { diceCount, diceSides, bonus }, false, rng)
+  const combatState = endCombatIfOver(result.state)
   return {
     isOk: true,
-    event: result.event,
-    state: result.state,
+    event: {
+      damage: result.event,
+      combatEnd: combatState.combatEnd,
+    },
+    state: combatState.state,
   }
 }
 
@@ -488,7 +520,7 @@ export function attack(
   const total = roll + weapon.attackBonus
   const isCritical = roll === 20
   const hasHit = isCritical || (roll !== 1 && total >= target.armorClass)
-  const event: Omit<AttackEvent, "damage" | "nextTurn"> = {
+  const event: Omit<AttackEvent, "damage" | "nextTurn" | "combatEnd" | "saveEvents"> = {
     attackerId: attacker.id,
     attackerName: attacker.name,
     targetId: target.id,
@@ -508,18 +540,28 @@ export function attack(
   const damageEvent = damageResult?.event ?? null
   let nextState = damageResult?.state ?? state
   let nextTurn: TurnPass | null = null
+  let saveEvents: DeathSaveEvent[] = []
 
   if (!hasCombatEnded(nextState)) {
     const result = passTurn(nextState, rng)
     if ("isOk" in result) return result
     nextState = result.state
     nextTurn = result.nextTurn
+    saveEvents = result.saveEvents
   }
 
+  const combatState = endCombatIfOver(nextState)
+  const combatEnd = combatState.combatEnd
   return {
     isOk: true,
-    event: { ...event, damage: damageEvent, nextTurn },
-    state: nextState,
+    event: {
+      ...event,
+      damage: damageEvent,
+      nextTurn,
+      combatEnd,
+      saveEvents,
+    },
+    state: combatState.state,
   }
 }
 
@@ -614,13 +656,11 @@ export function startCombat(
 
 export function endCombat(state: GameState): ReturnResult<"end_combat"> {
   if (!state.combat) return { isOk: false, errorText: "No combat is active" }
+  const result = closeCombatHelper(state, state.combat)
   return {
     isOk: true,
-    event: { lastRound: state.combat.round },
-    state: {
-      ...state,
-      combat: null,
-    },
+    event: result.combatEnd,
+    state: result.state,
   }
 }
 
@@ -630,11 +670,6 @@ export function endTurn(
   rng: Rng = Math.random,
 ): ReturnResult<"end_turn"> {
   if (!state.combat) return { isOk: false, errorText: `No combat is active` }
-  if (hasCombatEnded(state))
-    return {
-      isOk: false,
-      errorText: `One side has no creatures left in combat. Call end_combat to finish the combat`,
-    }
   if (args.creatureId !== state.combat.activeCreatureId)
     return {
       isOk: false,
@@ -647,13 +682,16 @@ export function endTurn(
   const result = passTurn(state, rng)
   if ("isOk" in result) return result
 
+  const combatState = endCombatIfOver(result.state)
   return {
     isOk: true,
     event: {
       creatureId: currentActiveCreature.id,
       creatureName: currentActiveCreature.name,
       nextTurn: result.nextTurn,
+      combatEnd: combatState.combatEnd,
+      saveEvents: result.saveEvents,
     },
-    state: result.state,
+    state: combatState.state,
   }
 }

@@ -17,7 +17,7 @@ export type ToolMap = {
     args: RollCheckArgs
   }
   apply_damage: {
-    event: DamageEvent
+    event: ApplyDamageEvent
     args: ApplyDamageArgs
   }
   attack: {
@@ -52,14 +52,14 @@ export type TurnPass = {
   nextCreatureName: string
   round: number
   isNewRound: boolean
-  isCombatOver: boolean
-  saveEvents: DeathSaveEvent[]
 }
 
 export type EndTurnEvent = {
   creatureId: string
   creatureName: string
-  nextTurn: TurnPass
+  nextTurn: TurnPass | null
+  combatEnd: EndCombatEvent | null
+  saveEvents: DeathSaveEvent[]
 }
 
 export type EndCombatEvent = {
@@ -103,6 +103,11 @@ export type CheckEvent = {
   success: boolean
 }
 
+export type ApplyDamageEvent = {
+  damage: DamageEvent
+  combatEnd: EndCombatEvent | null
+}
+
 export type DamageOutcome = "dead" | "down" | "alive"
 
 export type DamageEvent = {
@@ -144,6 +149,8 @@ export type AttackEvent = {
   isCritical: boolean
   damage: DamageEvent | null
   nextTurn: TurnPass | null
+  combatEnd: EndCombatEvent | null
+  saveEvents: DeathSaveEvent[]
 }
 
 export type GameRecord = {
