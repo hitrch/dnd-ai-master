@@ -1,8 +1,9 @@
 import { test } from "node:test"
+import type { TestContext } from "node:test"
 import assert from "node:assert/strict"
 import { GameStateSchema } from "@dnd/shared"
 import type { GameState } from "@dnd/shared"
-import { compactHistory, executeTools, Master } from "./master"
+import { compactHistory, executeTools, Master, splitHistoryForSummary } from "./master"
 import { modelDefinition } from "./modelDefinition"
 import { toolDefinitions } from "./toolDefinitions"
 import type { ModelProvider, ModelResponse, StoryMessage, ToolDefinition } from "../model/types"
@@ -1086,4 +1087,214 @@ test("handleMessage: a failed action does not compact the history", async () => 
     "model_text",
     "player_text",
   ])
+})
+
+// --- story summary ---
+
+test("splitHistoryForSummary: empty history gives nothing to summarize", () => {
+  assert.deepEqual(splitHistoryForSummary([], 2, 2), {
+    messagesToSummarize: [],
+    messagesToKeep: [],
+  })
+})
+
+test("splitHistoryForSummary: no old actions, nothing to summarize", () => {
+  const history = [...action("a"), ...action("b")]
+  const out = splitHistoryForSummary(history, 2, 1)
+  assert.deepEqual(out.messagesToSummarize, [])
+  assert.deepEqual(out.messagesToKeep, history)
+})
+
+test("splitHistoryForSummary: fewer old actions than the threshold are kept", () => {
+  const history = [...compacted("a"), ...action("b"), ...action("c")]
+  const out = splitHistoryForSummary(history, 2, 2)
+  assert.deepEqual(out.messagesToSummarize, [])
+  assert.deepEqual(out.messagesToKeep, history)
+})
+
+test("splitHistoryForSummary: at the threshold all old actions go to the summary", () => {
+  const history = [...compacted("a"), ...compacted("b"), ...action("c"), ...action("d", 2)]
+  const out = splitHistoryForSummary(history, 2, 2)
+  assert.deepEqual(out.messagesToSummarize, [...compacted("a"), ...compacted("b")])
+  assert.deepEqual(out.messagesToKeep, [...action("c"), ...action("d", 2)])
+})
+
+test("splitHistoryForSummary: above the threshold (after a failed summary) all old actions go", () => {
+  const history = [
+    ...compacted("a"),
+    ...compacted("b"),
+    ...compacted("c"),
+    ...action("d"),
+    ...action("e"),
+  ]
+  const out = splitHistoryForSummary(history, 2, 2)
+  assert.deepEqual(out.messagesToSummarize, [
+    ...compacted("a"),
+    ...compacted("b"),
+    ...compacted("c"),
+  ])
+  assert.deepEqual(out.messagesToKeep, [...action("d"), ...action("e")])
+})
+
+test("splitHistoryForSummary: a threshold of one summarizes the single old action", () => {
+  const history = [...compacted("a"), ...action("b")]
+  const out = splitHistoryForSummary(history, 1, 1)
+  assert.deepEqual(out.messagesToSummarize, compacted("a"))
+  assert.deepEqual(out.messagesToKeep, action("b"))
+})
+
+test("splitHistoryForSummary: the kept part starts with the player text of its first action", () => {
+  const history = [...compacted("a"), ...compacted("b"), ...action("c")]
+  const out = splitHistoryForSummary(history, 1, 2)
+  assert.deepEqual(out.messagesToKeep[0], player("c"))
+  // nothing is lost or duplicated
+  assert.deepEqual([...out.messagesToSummarize, ...out.messagesToKeep], history)
+})
+
+test("splitHistoryForSummary: the input history is not mutated", () => {
+  const history = [...compacted("a"), ...compacted("b"), ...action("c")]
+  const copy = structuredClone(history)
+  splitHistoryForSummary(history, 1, 2)
+  assert.deepEqual(history, copy)
+})
+
+test("Master: number of actions to summarize must be a positive integer", () => {
+  const { store } = fakeStore(state)
+  const { model } = fakeModel([])
+  for (const bad of [0, -1, 2.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+    assert.throws(
+      () => new Master(store, ROOM, model, fixed(0.5), 5, 1, bad),
+      /integer/,
+      String(bad),
+    )
+  }
+  assert.doesNotThrow(() => new Master(store, ROOM, model, fixed(0.5), 5, 1, 1))
+})
+
+// Silences and counts console.error for one test
+function muteErrors(t: TestContext) {
+  return t.mock.method(console, "error", () => {})
+}
+
+test("handleMessage: old actions are folded into the summary at the threshold", async () => {
+  const { store } = fakeStore(state)
+  const { model, calls } = fakeModel([
+    say("first"),
+    say("second"),
+    say("third"),
+    say("SUMMARY-1"),
+    say("fourth"),
+  ])
+  // one action kept full, two old actions make a summary
+  const master = new Master(store, ROOM, model, fixed(0.5), 5, 1, 2)
+
+  await master.handleMessage("one")
+  await master.handleMessage("two")
+  // below the threshold: no summary call yet, no summary in the instruction
+  assert.equal(calls.length, 2)
+  assert.doesNotMatch(calls[1].systemInstruction, /Story so far/)
+
+  const reply = await master.handleMessage("three")
+  assert.equal(reply, "third")
+
+  // the summary call: only the old actions, no tools, the summary instruction, no game state
+  const summaryCall = calls[3]
+  assert.deepEqual(summaryCall.messages, [
+    player("one"),
+    say("first"),
+    player("two"),
+    say("second"),
+  ])
+  assert.deepEqual(summaryCall.tools, [])
+  assert.ok(summaryCall.systemInstruction.startsWith(modelDefinition.summaryInstruction))
+  assert.doesNotMatch(summaryCall.systemInstruction, /Current game state/)
+
+  // the next action sees the summary instead of the folded actions
+  await master.handleMessage("four")
+  assert.deepEqual(calls[4].messages, [player("three"), say("third"), player("four")])
+  assert.match(calls[4].systemInstruction, /Story so far: SUMMARY-1/)
+  // the summary comes before the game state
+  assert.ok(
+    calls[4].systemInstruction.indexOf("SUMMARY-1") <
+      calls[4].systemInstruction.indexOf("Current game state"),
+  )
+})
+
+test("handleMessage: the summary is cumulative, the old one goes into the next summary call", async () => {
+  const { store } = fakeStore(state)
+  const { model, calls } = fakeModel([
+    say("first"),
+    say("second"),
+    say("SUMMARY-1"),
+    say("third"),
+    say("SUMMARY-2"),
+    say("fourth"),
+    say("SUMMARY-3"),
+  ])
+  const master = new Master(store, ROOM, model, fixed(0.5), 5, 1, 1)
+
+  await master.handleMessage("one")
+  await master.handleMessage("two") // folds action one
+  await master.handleMessage("three") // folds action two on top of SUMMARY-1
+  await master.handleMessage("four")
+
+  // second summary call: only action two, with the previous summary
+  assert.deepEqual(calls[4].messages, [player("two"), say("second")])
+  assert.match(calls[4].systemInstruction, /SUMMARY-1/)
+  // the master sees only the newest summary
+  assert.match(calls[5].systemInstruction, /Story so far: SUMMARY-2/)
+  assert.doesNotMatch(calls[5].systemInstruction, /SUMMARY-1/)
+})
+
+test("handleMessage: a failed summary does not fail the action and keeps the history", async (t) => {
+  const errors = muteErrors(t)
+  const { store, log } = fakeStore(state)
+  const { model, calls } = fakeModel([
+    say("first"),
+    say("second"),
+    new Error("Model is down"),
+    say("third"),
+    say("SUMMARY"),
+  ])
+  const master = new Master(store, ROOM, model, fixed(0.5), 5, 1, 1)
+
+  await master.handleMessage("one")
+  const reply = await master.handleMessage("two")
+
+  // the action is committed and answered, nothing is cancelled, the failure is logged
+  assert.equal(reply, "second")
+  assert.equal(log.committed.length, 2)
+  assert.equal(log.cancelled, 0)
+  assert.equal(errors.mock.callCount(), 1)
+
+  // the next action still sees action one, and the summary is tried again with both old actions
+  await master.handleMessage("three")
+  assert.deepEqual(calls[3].messages, [
+    player("one"),
+    say("first"),
+    player("two"),
+    say("second"),
+    player("three"),
+  ])
+  assert.doesNotMatch(calls[3].systemInstruction, /Story so far/)
+  assert.deepEqual(calls[4].messages, [player("one"), say("first"), player("two"), say("second")])
+})
+
+test("handleMessage: tool calls instead of a summary count as a failure and run nothing", async (t) => {
+  const errors = muteErrors(t)
+  const { store, log } = fakeStore(state)
+  const { model, calls } = fakeModel([say("first"), say("second"), damage("e1"), say("third")])
+  const master = new Master(store, ROOM, model, fixed(0.5), 5, 1, 1)
+
+  await master.handleMessage("one")
+  assert.equal(await master.handleMessage("two"), "second")
+
+  assert.equal(errors.mock.callCount(), 1)
+  // the tool call of the summary model was not executed
+  assert.deepEqual(log.current, state)
+  assert.equal(log.committed.length, 2)
+
+  await master.handleMessage("three")
+  assert.doesNotMatch(calls[3].systemInstruction, /Story so far/)
+  assert.deepEqual(calls[3].messages.slice(0, 2), [player("one"), say("first")])
 })

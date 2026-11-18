@@ -120,7 +120,7 @@ export class GeminiProvider implements ModelProvider {
       const res = await this._client.models.generateContent({
         model: this._modelName,
         contents,
-        config: { tools, systemInstruction },
+        config: { ...(toolDefinitions.length ? { tools } : {}), systemInstruction },
       })
       return translateContentResponseToModelResponse(res)
     } catch (e) {

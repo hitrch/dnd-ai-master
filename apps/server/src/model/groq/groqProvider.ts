@@ -139,7 +139,7 @@ export class GroqProvider implements ModelProvider {
       const res = await this._client.chat.completions.create({
         model: this._modelName,
         messages: groqMessages,
-        tools,
+        ...(tools.length ? { tools } : {}),
       })
       return translateCompletionToModelResponse(res)
     } catch (e) {

@@ -46,4 +46,18 @@ export const modelDefinition = {
     'Address the player the same way every time (in Russian: informal "ты"). ' +
     "Keep answers short: two to five sentences of vivid narration. " +
     "Always answer in the language the player writes in.",
+  // Instruction for the separate call that folds old actions into the story summary.
+  // The previous summary is appended after it; the actions to fold come as the messages.
+  summaryInstruction:
+    "You keep the story summary of a Dungeons & Dragons game. " +
+    "Below is the summary so far (it may be empty); the messages are the next part of the game: " +
+    "what the player wrote and how the Dungeon Master answered. " +
+    "Write a new summary that keeps everything from the old one and adds the new events. " +
+    "Keep the facts the story may need later: names of non-player characters and what they said or want, " +
+    "places visited and what is there, doors, paths and objects noticed, promises, deals, quests, " +
+    "secrets learned, who was fought and how it ended. " +
+    "Do not keep hit points, rolls or other numbers: the game state holds them. " +
+    "Do not invent anything that is not in the summary or the messages. " +
+    "Write plain text, past tense, short sentences, no headings or lists, at most 150 words, " +
+    "in the language of the messages. Answer only with the summary.",
 }

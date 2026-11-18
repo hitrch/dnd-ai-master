@@ -18,6 +18,11 @@ import { modelDefinition } from "./modelDefinition"
 import type { ActionStore, ToolResult, ToolRunResult } from "../types"
 import { z } from "zod"
 
+export type SplitHistoryForSummaryResult = {
+  messagesToSummarize: StoryMessage[]
+  messagesToKeep: StoryMessage[]
+}
+
 export function executeTools(tools: ToolCall[], gameState: GameState, rng: Rng): ToolRunResult {
   const results: ToolResult[] = []
   let draft = gameState
@@ -224,21 +229,27 @@ export function executeTools(tools: ToolCall[], gameState: GameState, rng: Rng):
   return { state: draft, results }
 }
 
-export function compactHistory(
-  messages: StoryMessage[],
-  actionsToKeepFull: number,
-): StoryMessage[] {
-  let firstFullActionIndex = 0
+export function findStartOfLastActions(messages: StoryMessage[], actionCount: number) {
+  let actionIndex = 0
   let playerTextCount = 0
 
   for (let i = messages.length - 1; i >= 0; i--) {
     const message = messages[i]
     if (message.messageType === "player_text") {
-      firstFullActionIndex = i
       playerTextCount++
-      if (playerTextCount === actionsToKeepFull) break
+      actionIndex = i
+      if (playerTextCount === actionCount) break
     }
   }
+
+  return actionIndex
+}
+
+export function compactHistory(
+  messages: StoryMessage[],
+  actionsToKeepFull: number,
+): StoryMessage[] {
+  const firstFullActionIndex = findStartOfLastActions(messages, actionsToKeepFull)
 
   if (firstFullActionIndex) {
     return messages.filter(
@@ -252,6 +263,31 @@ export function compactHistory(
   return messages
 }
 
+export function splitHistoryForSummary(
+  messages: StoryMessage[],
+  actionsToKeepFull: number,
+  oldActionsToSummarize: number,
+): SplitHistoryForSummaryResult {
+  const messagesToSummarize: StoryMessage[] = []
+  const endOfCompactedMessages = findStartOfLastActions(messages, actionsToKeepFull)
+  let compactedMessageCounter = 0
+
+  for (let i = 0; i < endOfCompactedMessages; i++) {
+    if (messages[i].messageType === "player_text") {
+      compactedMessageCounter++
+    }
+  }
+
+  if (compactedMessageCounter >= oldActionsToSummarize) {
+    return {
+      messagesToSummarize: messages.slice(0, endOfCompactedMessages),
+      messagesToKeep: messages.slice(endOfCompactedMessages),
+    }
+  }
+
+  return { messagesToSummarize, messagesToKeep: messages }
+}
+
 export class Master {
   private readonly _roomId: string
   private readonly _store: ActionStore
@@ -260,6 +296,8 @@ export class Master {
   private readonly _rng: Rng
   private readonly _maxRounds: number
   private readonly _actionsToKeepFull: number
+  private readonly _oldActionsToSummarize: number
+  private _summary: string = ""
 
   constructor(
     store: ActionStore,
@@ -271,11 +309,15 @@ export class Master {
     maxRounds: number = 5,
     // Last n actions will be kept fully, while others compacted
     actionsToKeepFull: number = 2,
+    // Once m old (compacted) actions pile up, all of them are folded into the story summary
+    oldActionsToSummarize: number = 3,
   ) {
     if (!Number.isInteger(maxRounds) || maxRounds <= 0)
       throw new Error("Max rounds must be an integer greater than 0")
     if (!Number.isInteger(actionsToKeepFull) || actionsToKeepFull <= 0)
       throw new Error("Actions kept full must be an integer greater than 0")
+    if (!Number.isInteger(oldActionsToSummarize) || oldActionsToSummarize <= 0)
+      throw new Error("Actions to summarize must be an integer greater than 0")
 
     this._store = store
     this._roomId = roomId
@@ -283,6 +325,7 @@ export class Master {
     this._rng = rng
     this._maxRounds = maxRounds
     this._actionsToKeepFull = actionsToKeepFull
+    this._oldActionsToSummarize = oldActionsToSummarize
   }
 
   async handleMessage(text: string): Promise<string> {
@@ -291,7 +334,12 @@ export class Master {
       const messages: StoryMessage[] = [{ messageType: "player_text", text }]
 
       for (let i = 0; i < this._maxRounds; i++) {
-        const instructions = modelDefinition.modelInstruction + "\n" + JSON.stringify(draft)
+        const instructions =
+          modelDefinition.modelInstruction +
+          (this._summary ? "\n" + "Story so far: " + this._summary : "") +
+          "\n" +
+          "Current game state: " +
+          JSON.stringify(draft)
         const modelResponse = await this._model.generate(
           [...this._messages, ...messages],
           toolDefinitions,
@@ -303,6 +351,32 @@ export class Master {
             await this._store.commitAction(this._roomId, draft)
             this._messages.push(...messages)
             this._messages = compactHistory(this._messages, this._actionsToKeepFull)
+            const { messagesToSummarize, messagesToKeep } = splitHistoryForSummary(
+              this._messages,
+              this._actionsToKeepFull,
+              this._oldActionsToSummarize,
+            )
+
+            if (messagesToSummarize.length) {
+              try {
+                const summarizationModelResponse = await this._model.generate(
+                  messagesToSummarize,
+                  [],
+                  modelDefinition.summaryInstruction + "\n" + `Summary so far: ${this._summary}`,
+                )
+                if (summarizationModelResponse.messageType === "model_text") {
+                  this._summary = summarizationModelResponse.text
+                  this._messages = messagesToKeep
+                } else {
+                  throw new Error(
+                    `Invalid summarization model response: ${JSON.stringify(summarizationModelResponse)}`,
+                  )
+                }
+              } catch (e) {
+                console.error("Failed to summarize history", e)
+              }
+            }
+
             return modelResponse.text
           }
           case "tool_calls": {

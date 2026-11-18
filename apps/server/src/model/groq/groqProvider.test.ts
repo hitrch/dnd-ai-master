@@ -10,6 +10,7 @@ import type {
 } from "groq-sdk/resources/chat"
 import type { GameRecord } from "@dnd/shared"
 import {
+  GroqProvider,
   translateCompletionToModelResponse,
   translateStoryMessagesToMessages,
   translateToModelError,
@@ -442,4 +443,33 @@ test("toMessages: more results than calls throws", () => {
     { messageType: "tool_results", results: [ok(checkRecord), ok(damageRecord)] },
   ]
   assert.throws(() => translateStoryMessagesToMessages(history, instruction))
+})
+
+// ---------- generate: request shape ----------
+
+// A provider whose SDK client records the request instead of calling the API
+function recordingGroq() {
+  const provider = new GroqProvider("test-key", "test-model", 1000)
+  const requests: Record<string, unknown>[] = []
+  const completions = provider["_client"].chat.completions as unknown as {
+    create: (request: Record<string, unknown>) => Promise<ChatCompletion>
+  }
+  completions.create = async (request) => {
+    requests.push(request)
+    return completion({ content: "ok" })
+  }
+  return { provider, requests }
+}
+
+test("generate: without tool definitions the request has no tools key", async () => {
+  const { provider, requests } = recordingGroq()
+  await provider.generate([], [], instruction)
+  assert.equal(requests.length, 1)
+  assert.equal("tools" in requests[0]!, false)
+})
+
+test("generate: with tool definitions the request has the tools", async () => {
+  const { provider, requests } = recordingGroq()
+  await provider.generate([], toolDefinitions, instruction)
+  assert.deepEqual(requests[0]?.tools, translateToolDefinitionsToTools(toolDefinitions))
 })

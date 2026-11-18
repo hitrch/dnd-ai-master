@@ -4,6 +4,7 @@ import { ApiError, GenerateContentResponse } from "@google/genai"
 import type { Part } from "@google/genai"
 import type { GameRecord } from "@dnd/shared"
 import {
+  GeminiProvider,
   translateContentResponseToModelResponse,
   translateStoryMessagesToContent,
   translateToModelError,
@@ -402,4 +403,36 @@ test("toModelError: result is an Error named ModelError", () => {
   const result = translateToModelError(apiError(503))
   assert.ok(result instanceof Error)
   assert.equal(result.name, "ModelError")
+})
+
+// ---------- generate: request shape ----------
+
+// A provider whose SDK client records the request instead of calling the API
+function recordingGemini() {
+  const provider = new GeminiProvider("test-key", "test-model", 1000)
+  const requests: { config?: Record<string, unknown> }[] = []
+  const models = provider["_client"].models as unknown as {
+    generateContent: (request: {
+      config?: Record<string, unknown>
+    }) => Promise<GenerateContentResponse>
+  }
+  models.generateContent = async (request) => {
+    requests.push(request)
+    return geminiResponse([{ text: "ok" }])
+  }
+  return { provider, requests }
+}
+
+test("generate: without tool definitions the config has no tools but keeps the instruction", async () => {
+  const { provider, requests } = recordingGemini()
+  await provider.generate([], [], "You are the master.")
+  assert.equal(requests.length, 1)
+  assert.equal("tools" in (requests[0]?.config ?? {}), false)
+  assert.equal(requests[0]?.config?.systemInstruction, "You are the master.")
+})
+
+test("generate: with tool definitions the config has the tools", async () => {
+  const { provider, requests } = recordingGemini()
+  await provider.generate([], toolDefinitions, "You are the master.")
+  assert.deepEqual(requests[0]?.config?.tools, translateToolDefinitionsToTools(toolDefinitions))
 })
