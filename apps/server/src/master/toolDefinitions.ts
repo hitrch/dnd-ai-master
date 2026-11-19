@@ -21,7 +21,7 @@ export const ToolDescriptions = {
     "DC: 5 very easy, 10 easy, 15 medium, 20 hard, 25 very hard.",
   attack:
     "Weapon attack by a player character or an enemy: d20 + the weapon's attack bonus against the target's armor class; " +
-    "on a hit the engine rolls the weapon's damage. Use one of the attacker's own weapons. " +
+    "on a hit the engine rolls the weapon's damage. weaponId is a weapon item from the attacker's own inventory." +
     "In combat only the active creature can attack, and any attack ends its turn. " +
     damageOutcomeDescription,
   apply_damage:

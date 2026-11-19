@@ -7,21 +7,37 @@ export const DiceSchema = z.object({
 })
 export type Dice = z.infer<typeof DiceSchema>
 
-export const WeaponSchema = z.object({
+const BaseItemSchema = z.object({
   id: z.string(),
   name: z.string(),
+  quantity: z.literal(1),
+})
+
+export const PotionSchema = z.object({
+  ...BaseItemSchema.shape,
+  kind: z.literal("potion"),
+})
+export type Potion = z.infer<typeof PotionSchema>
+
+export const WeaponSchema = z.object({
+  ...BaseItemSchema.shape,
+  kind: z.literal("weapon"),
   attackBonus: z.number().int().min(0).max(10),
   damage: DiceSchema,
 })
 export type Weapon = z.infer<typeof WeaponSchema>
+
+export const ItemSchema = z.discriminatedUnion("kind", [PotionSchema, WeaponSchema])
+export type Item = z.infer<typeof ItemSchema>
 
 const CreatureSchema = z.object({
   id: z.string(),
   name: z.string(),
   hp: z.number().int(),
   maxHp: z.number().int().positive(),
+  money: z.number().int().min(0),
   armorClass: z.number().int().positive(),
-  weapons: z.array(WeaponSchema),
+  inventory: z.array(ItemSchema),
   initiativeModifier: z.number().int().min(-5).max(10),
   // key - skill name, value - modifier
   skills: z.record(z.string(), z.number().int()),

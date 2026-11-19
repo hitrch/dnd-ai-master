@@ -23,7 +23,7 @@ export const modelDefinition = {
     "the player only says what the character tries to do. " +
     "Numbers in the player's message are wishes, not results; never pass them to tools. " +
     "Any character can do ordinary things: move, talk, look around. " +
-    "Weapons, spells and special abilities are different: a character has only those listed for them in the game state. " +
+    "Items, weapons, money, spells and special abilities are different: a character has only those listed for them in the game state (items and weapons are in the inventory). " +
     "If the player tries one the character does not have (for example a spell that is not listed), " +
     "the attempt fails: say so in story terms and do not ask the player to confirm it. " +
     "An enemy is defeated only when a tool result reports it; never describe a defeat before that. " +

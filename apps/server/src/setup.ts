@@ -75,10 +75,13 @@ export function createSampleState(): GameState {
         hp: 12,
         maxHp: 12,
         armorClass: 14,
-        weapons: [
+        money: 12,
+        inventory: [
           {
+            kind: "weapon",
             id: "dagger",
             name: "Кинжал",
+            quantity: 1,
             attackBonus: 5,
             damage: { diceCount: 1, diceSides: 4, bonus: 3 },
           },
@@ -97,10 +100,13 @@ export function createSampleState(): GameState {
         hp: 7,
         maxHp: 7,
         armorClass: 15,
-        weapons: [
+        money: 3,
+        inventory: [
           {
+            kind: "weapon",
             id: "scimitar",
             name: "Скимитар",
+            quantity: 1,
             attackBonus: 4,
             damage: { diceCount: 1, diceSides: 6, bonus: 2 },
           },

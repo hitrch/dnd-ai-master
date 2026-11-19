@@ -18,10 +18,13 @@ const state = GameStateSchema.parse({
       hp: 12,
       maxHp: 12,
       armorClass: 14,
-      weapons: [
+      money: 10,
+      inventory: [
         {
+          kind: "weapon",
           id: "dagger",
           name: "Кинжал",
+          quantity: 1,
           attackBonus: 5,
           damage: { diceCount: 1, diceSides: 4, bonus: 3 },
         },
@@ -40,7 +43,8 @@ const state = GameStateSchema.parse({
       hp: 7,
       maxHp: 7,
       armorClass: 15,
-      weapons: [],
+      money: 0,
+      inventory: [],
       skills: {},
       initiativeModifier: 2,
     },
@@ -233,8 +237,10 @@ test("end_turn refused by the engine returns a failed result", () => {
 })
 
 const scimitar = {
+  kind: "weapon" as const,
   id: "scimitar",
   name: "Скимитар",
+  quantity: 1 as const,
   attackBonus: 4,
   damage: { diceCount: 1, diceSides: 6 as const, bonus: 2 },
 }
@@ -243,7 +249,7 @@ test("a full round in one batch: the attacks pass the turns themselves", () => {
   // every d20 rolls 11: 11 + 5 = 16 vs AC 15 and 11 + 4 = 15 vs AC 14, both attacks hit
   const fighting = {
     ...state,
-    enemies: [{ ...state.enemies[0], weapons: [scimitar] }],
+    enemies: [{ ...state.enemies[0], inventory: [scimitar] }],
     combat: { order: ["p1", "e1"], round: 1, activeCreatureId: "p1" },
   }
   const r = executeTools(
@@ -505,7 +511,7 @@ test("the model can fix its mistake in the next round: end_turn, then attack", (
   // the goblin's turn; the model first attacks for the player, then passes the turn correctly
   const fighting = {
     ...state,
-    enemies: [{ ...state.enemies[0], weapons: [scimitar] }],
+    enemies: [{ ...state.enemies[0], inventory: [scimitar] }],
     combat: { order: ["e1", "p1"], round: 1, activeCreatureId: "e1" },
   }
   const wrong = executeTools(

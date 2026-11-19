@@ -22,13 +22,17 @@ const state = GameStateSchema.parse({
       hp: 12,
       maxHp: 12,
       armorClass: 14,
-      weapons: [
+      money: 10,
+      inventory: [
         {
+          kind: "weapon",
           id: "dagger",
           name: "Кинжал",
+          quantity: 1,
           attackBonus: 5,
           damage: { diceCount: 1, diceSides: 4, bonus: 3 },
         },
+        { kind: "potion", id: "potion", name: "Зелье лечения", quantity: 1 },
       ],
       skills: { stealth: 5, athletics: 1 },
       initiativeModifier: 3,
@@ -44,10 +48,13 @@ const state = GameStateSchema.parse({
       hp: 7,
       maxHp: 7,
       armorClass: 15,
-      weapons: [
+      money: 3,
+      inventory: [
         {
+          kind: "weapon",
           id: "scimitar",
           name: "Скимитар",
+          quantity: 1,
           attackBonus: 4,
           damage: { diceCount: 1, diceSides: 6, bonus: 2 },
         },
@@ -368,6 +375,7 @@ test("attack: refusals return an error and roll nothing", () => {
     ["unknown target", state, { ...daggerAtGoblin, targetId: "ghost" }],
     ["weapon of someone else", state, { ...daggerAtGoblin, weaponId: "scimitar" }],
     ["unknown weapon", state, { ...daggerAtGoblin, weaponId: "bow" }],
+    ["item that is not a weapon", state, { ...daggerAtGoblin, weaponId: "potion" }],
     [
       "attacker at 0 HP",
       withGoblin({ hp: 0 }),
@@ -900,16 +908,35 @@ test("heal args schema: same dice limits as damage, flat args", () => {
 })
 
 test("weapon schema: damage dice use the same limits", () => {
-  const weapon = { id: "w", name: "W", attackBonus: 0 }
+  const weapon = { kind: "weapon", id: "w", name: "W", quantity: 1, attackBonus: 0 }
   const make = (damage: unknown) =>
     GameStateSchema.safeParse({
       ...state,
-      players: [{ ...state.players[0], weapons: [{ ...weapon, damage }] }],
+      players: [{ ...state.players[0], inventory: [{ ...weapon, damage }] }],
     }).success
   assert.equal(make({ diceCount: 1, diceSides: 6, bonus: 0 }), true)
   assert.equal(make({ diceCount: 11, diceSides: 6, bonus: 0 }), false)
   assert.equal(make({ diceCount: 1, diceSides: 7, bonus: 0 }), false)
   assert.equal(make({ diceCount: 1, diceSides: 6, bonus: 11 }), false)
+})
+
+test("inventory schema: one copy per item, money is a non-negative integer", () => {
+  const dagger = state.players[0].inventory[0]
+  const potion = state.players[0].inventory[1]
+  const withPlayer = (patch: Record<string, unknown>) =>
+    GameStateSchema.safeParse({ ...state, players: [{ ...state.players[0], ...patch }] }).success
+
+  assert.equal(withPlayer({ inventory: [] }), true)
+  assert.equal(withPlayer({ inventory: [{ ...dagger, quantity: 2 }] }), false)
+  assert.equal(withPlayer({ inventory: [{ ...potion, quantity: 2 }] }), false)
+  assert.equal(withPlayer({ inventory: [{ ...potion, kind: "scroll" }] }), false)
+  // a weapon without its fields is not a weapon
+  assert.equal(withPlayer({ inventory: [{ ...potion, kind: "weapon" }] }), false)
+  assert.equal(withPlayer({ money: 0 }), true)
+  assert.equal(withPlayer({ money: -1 }), false)
+  assert.equal(withPlayer({ money: 1.5 }), false)
+  const { money: _, ...withoutMoney } = state.players[0]
+  assert.equal(GameStateSchema.safeParse({ ...state, players: [withoutMoney] }).success, false)
 })
 
 // ---------- combat ----------

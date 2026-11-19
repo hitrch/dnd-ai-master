@@ -23,6 +23,7 @@ import {
   DeathSaveEvent,
   TurnPass,
   EndCombatEvent,
+  Weapon,
 } from "@dnd/shared"
 
 // Random number generator in [0, 1). Math.random in the game, replaced in tests.
@@ -512,8 +513,10 @@ export function attack(
   const targetError = getTargetError(target)
   if (targetError) return { isOk: false, errorText: targetError }
 
-  const weapon = attacker.weapons.find((w) => w.id === args.weaponId)
+  const weapon = attacker.inventory.find((i) => i.id === args.weaponId)
   if (!weapon) return { isOk: false, errorText: `Unknown weapon with id: ${args.weaponId}` }
+  if (weapon.kind !== "weapon")
+    return { isOk: false, errorText: `Item with id: ${args.weaponId} is not a weapon` }
   if (attacker.hp === 0) return { isOk: false, errorText: `Attacker is down: ${attacker.name}` }
 
   const roll = rollD(rng, 20)
