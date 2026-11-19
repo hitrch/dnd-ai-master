@@ -85,6 +85,13 @@ export function createSampleState(): GameState {
             attackBonus: 5,
             damage: { diceCount: 1, diceSides: 4, bonus: 3 },
           },
+          {
+            kind: "healing_potion",
+            id: "potion",
+            name: "Зелье лечения",
+            quantity: 1,
+            healing: { diceCount: 2, diceSides: 4, bonus: 2 },
+          },
         ],
         skills: { stealth: 5, athletics: 1, persuasion: 2, perception: 3 },
         initiativeModifier: 3,

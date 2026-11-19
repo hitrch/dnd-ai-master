@@ -6,6 +6,7 @@ import {
   rollCheck,
   applyDamage,
   applyHeal,
+  applyHealingPotion,
   attack,
   deathSave,
   startCombat,
@@ -32,7 +33,13 @@ const state = GameStateSchema.parse({
           attackBonus: 5,
           damage: { diceCount: 1, diceSides: 4, bonus: 3 },
         },
-        { kind: "potion", id: "potion", name: "Зелье лечения", quantity: 1 },
+        {
+          kind: "healing_potion",
+          id: "potion",
+          name: "Зелье лечения",
+          quantity: 1,
+          healing: { diceCount: 2, diceSides: 4, bonus: 2 },
+        },
       ],
       skills: { stealth: 5, athletics: 1 },
       initiativeModifier: 3,
@@ -1647,4 +1654,120 @@ test("state schema: initiative modifier is an integer from -5 to 10", () => {
   assert.equal(make(11), false)
   assert.equal(make(1.5), false)
   assert.equal(make(undefined), false)
+})
+
+// ---------- healing potions ----------
+// The sample potion is 2d4 + 2: rng 0.5 rolls 3 + 3 = 8 in total
+
+const dagger = state.players[0].inventory[0]
+const drinkOwnPotion = { userId: "p1", potionId: "potion", targetId: "p1" }
+
+test("potion: drinking it heals by the potion dice, removes it and fills the event", () => {
+  const wounded = withPlayer({ hp: 3 })
+  const r = applyHealingPotion(wounded, drinkOwnPotion, fixed(0.5))
+  assert.ok(r.isOk)
+  assert.deepEqual(r.event, {
+    userId: "p1",
+    userName: "Арвен",
+    potionId: "potion",
+    potionName: "Зелье лечения",
+    targetId: "p1",
+    targetName: "Арвен",
+    amount: 8,
+    rolls: [3, 3],
+    bonus: 2,
+    hpBefore: 3,
+    hpAfter: 11,
+    outcome: "healed",
+  })
+  // the drinker is also the target: neither the heal nor the removal is lost
+  assert.equal(r.state.players[0].hp, 11)
+  assert.deepEqual(r.state.players[0].inventory, [dagger])
+  // the original state is untouched
+  assert.equal(wounded.players[0].hp, 3)
+  assert.equal(wounded.players[0].inventory.length, 2)
+})
+
+test("potion: an ally pours it into a dying character, the potion leaves the ally", () => {
+  const s = crowdWith("p1", { hp: 0, saveRollFails: 2, saveRollSuccesses: 1, inventory: [dagger] })
+  const r = applyHealingPotion(s, { userId: "p2", potionId: "potion", targetId: "p1" }, fixed(0.5))
+  assert.ok(r.isOk)
+  assert.equal(r.event.userId, "p2")
+  assert.equal(r.event.targetId, "p1")
+  assert.equal(r.event.outcome, "regainedConsciousness")
+  const [p1, p2] = r.state.players
+  assert.equal(p1.hp, 8)
+  assert.equal(p1.saveRollFails, 0)
+  assert.equal(p1.saveRollSuccesses, 0)
+  assert.deepEqual(p1.inventory, [dagger])
+  assert.deepEqual(p2.inventory, [dagger])
+  assert.equal(p2.hp, ally.hp)
+})
+
+test("potion: an enemy drinks its own potion", () => {
+  const potion = state.players[0].inventory[1]
+  const s = withGoblin({ hp: 2, inventory: [...state.enemies[0].inventory, potion] })
+  const r = applyHealingPotion(s, { userId: "e1", potionId: "potion", targetId: "e1" }, fixed(0.5))
+  assert.ok(r.isOk)
+  assert.equal(r.state.enemies[0].hp, 7) // 2 + 8, capped at max HP 7
+  assert.deepEqual(r.state.enemies[0].inventory, state.enemies[0].inventory)
+  assert.deepEqual(r.state.players, state.players)
+})
+
+test("potion: only the used potion is removed", () => {
+  const potion = state.players[0].inventory[1]
+  const second = { ...potion, id: "potion-2" }
+  const s = withPlayer({ hp: 3, inventory: [dagger, potion, second] })
+  const r = applyHealingPotion(s, drinkOwnPotion, fixed(0.5))
+  assert.ok(r.isOk)
+  assert.deepEqual(r.state.players[0].inventory, [dagger, second])
+})
+
+test("potion: in combat the active creature drinks it and keeps the turn", () => {
+  const s = inCombat(["p1", "e1", "p2", "e2"], "p1", crowdWith("p1", { hp: 3 }))
+  const r = applyHealingPotion(s, drinkOwnPotion, fixed(0.5))
+  assert.ok(r.isOk)
+  assert.equal(r.state.players[0].hp, 11)
+  assert.deepEqual(r.state.combat, s.combat)
+})
+
+test("potion: refusals roll nothing", () => {
+  const cases: [string, GameState, { userId: string; potionId: string; targetId: string }][] = [
+    ["unknown user", state, { ...drinkOwnPotion, userId: "nobody" }],
+    ["user is down", withDownPlayer(), drinkOwnPotion],
+    ["unknown target", state, { ...drinkOwnPotion, targetId: "ghost" }],
+    [
+      "dead target",
+      crowdWith("p1", { hp: 0, saveRollFails: 3 }),
+      { userId: "p2", potionId: "potion", targetId: "p1" },
+    ],
+    ["enemy target at 0 HP", withGoblin({ hp: 0 }), { ...drinkOwnPotion, targetId: "e1" }],
+    ["unknown item", state, { ...drinkOwnPotion, potionId: "elixir" }],
+    ["item is not a potion", state, { ...drinkOwnPotion, potionId: "dagger" }],
+    [
+      "potion of someone else",
+      crowdWith("p1", { inventory: [dagger] }),
+      { userId: "p1", potionId: "potion", targetId: "p1" },
+    ],
+    ["not the active creature", inCombat(["e1", "p1"], "e1", state), drinkOwnPotion],
+  ]
+  for (const [name, s, args] of cases) {
+    // an empty sequence fails on any rng call
+    const r = applyHealingPotion(s, args, sequence().rng)
+    assert.equal(r.isOk, false, name)
+    assert.ok(!r.isOk && r.errorText.length > 0, name)
+  }
+})
+
+test("potion schema: healing dice use the same limits, a potion is one item", () => {
+  const potion = state.players[0].inventory[1]
+  const make = (item: unknown) =>
+    GameStateSchema.safeParse({
+      ...state,
+      players: [{ ...state.players[0], inventory: [item] }],
+    }).success
+  assert.equal(make(potion), true)
+  assert.equal(make({ ...potion, healing: { diceCount: 11, diceSides: 4, bonus: 0 } }), false)
+  assert.equal(make({ ...potion, healing: undefined }), false)
+  assert.equal(make({ ...potion, quantity: 2 }), false)
 })

@@ -1,6 +1,7 @@
 import {
   ApplyDamageArgs,
   ApplyHealArgs,
+  ApplyHealingPotionArgs,
   AttackArgs,
   DeathSaveArgs,
   EndCombatArgs,
@@ -44,8 +45,19 @@ export type ToolMap = {
     event: EndTurnEvent
     args: EndTurnArgs
   }
+  apply_healing_potion: {
+    event: ApplyHealingPotionEvent
+    args: ApplyHealingPotionArgs
+  }
 }
 export type ToolName = keyof ToolMap
+
+export type ApplyHealingPotionEvent = {
+  userId: string
+  userName: string
+  potionId: string
+  potionName: string
+} & HealEvent
 
 export type TurnPass = {
   nextCreatureId: string

@@ -47,6 +47,13 @@ export const EndTurnArgsSchema = z.object({
 })
 export type EndTurnArgs = z.infer<typeof EndTurnArgsSchema>
 
+export const ApplyHealingPotionArgsSchema = z.object({
+  targetId: z.string(),
+  userId: z.string(),
+  potionId: z.string(),
+})
+export type ApplyHealingPotionArgs = z.infer<typeof ApplyHealingPotionArgsSchema>
+
 export const ToolArgsSchemas = {
   roll_check: RollCheckArgsSchema,
   apply_damage: ApplyDamageArgsSchema,
@@ -56,4 +63,5 @@ export const ToolArgsSchemas = {
   start_combat: StartCombatArgsSchema,
   end_combat: EndCombatArgsSchema,
   end_turn: EndTurnArgsSchema,
+  apply_healing_potion: ApplyHealingPotionArgsSchema,
 } satisfies Record<ToolName, z.ZodType>

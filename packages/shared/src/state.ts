@@ -13,11 +13,12 @@ const BaseItemSchema = z.object({
   quantity: z.literal(1),
 })
 
-export const PotionSchema = z.object({
+export const HealingPotionSchema = z.object({
   ...BaseItemSchema.shape,
-  kind: z.literal("potion"),
+  kind: z.literal("healing_potion"),
+  healing: DiceSchema,
 })
-export type Potion = z.infer<typeof PotionSchema>
+export type HealingPotion = z.infer<typeof HealingPotionSchema>
 
 export const WeaponSchema = z.object({
   ...BaseItemSchema.shape,
@@ -27,7 +28,7 @@ export const WeaponSchema = z.object({
 })
 export type Weapon = z.infer<typeof WeaponSchema>
 
-export const ItemSchema = z.discriminatedUnion("kind", [PotionSchema, WeaponSchema])
+export const ItemSchema = z.discriminatedUnion("kind", [HealingPotionSchema, WeaponSchema])
 export type Item = z.infer<typeof ItemSchema>
 
 const CreatureSchema = z.object({

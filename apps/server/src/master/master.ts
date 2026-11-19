@@ -2,6 +2,7 @@ import type { ModelProvider, StoryMessage, ToolCall } from "../model/types"
 import {
   applyDamage,
   applyHeal,
+  applyHealingPotion,
   attack,
   deathSave,
   endCombat,
@@ -216,6 +217,28 @@ export function executeTools(tools: ToolCall[], gameState: GameState, rng: Rng):
           tool: "end_turn",
           args: endTurnArgs.data,
           event: endTurnResult.event,
+        })
+        break
+      }
+      case "apply_healing_potion": {
+        const applyHealingPotionArgs = ToolArgsSchemas.apply_healing_potion.safeParse(call.args)
+        if (!applyHealingPotionArgs.success) {
+          fail(call.name, z.prettifyError(applyHealingPotionArgs.error))
+          continue
+        }
+
+        const applyHealingPotionResult = applyHealingPotion(draft, applyHealingPotionArgs.data, rng)
+        if (!applyHealingPotionResult.isOk) {
+          fail(call.name, applyHealingPotionResult.errorText)
+          continue
+        }
+
+        draft = applyHealingPotionResult.state
+        results.push({
+          isOk: true,
+          tool: "apply_healing_potion",
+          args: applyHealingPotionArgs.data,
+          event: applyHealingPotionResult.event,
         })
         break
       }

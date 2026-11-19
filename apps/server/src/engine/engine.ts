@@ -23,14 +23,20 @@ import {
   DeathSaveEvent,
   TurnPass,
   EndCombatEvent,
-  Weapon,
+  ApplyHealingPotionArgs,
+  HealOutcome,
 } from "@dnd/shared"
 
 // Random number generator in [0, 1). Math.random in the game, replaced in tests.
 export type Rng = () => number
-interface RollAndApplyDamageResult {
+type RollAndApplyDamageResult = {
   state: GameState
   event: DamageEvent
+}
+
+type RollAndApplyHealResult = {
+  state: GameState
+  event: HealEvent
 }
 
 type TurnPassResult =
@@ -61,11 +67,13 @@ type EndCombatIfOverResult = {
   combatEnd: EndCombatEvent | null
 }
 
+type RollDiceResult = { rolls: number[]; amount: number }
+
 export function rollD(rng: Rng, sides: number): number {
   return Math.floor(rng() * sides) + 1
 }
 
-function rollDice(diceInfo: Dice, rng: Rng): { rolls: number[]; amount: number } {
+function rollDice(diceInfo: Dice, rng: Rng): RollDiceResult {
   const rolls: number[] = []
   let amount = diceInfo.bonus
   for (let i = 0; i < diceInfo.diceCount; i++) {
@@ -306,6 +314,51 @@ function saveRoll(character: Character, rng: Rng): SaveRollResult {
   }
 }
 
+function rollAndApplyHeal(
+  state: GameState,
+  target: Character | Enemy,
+  heal: Dice,
+  rng: Rng,
+): RollAndApplyHealResult {
+  const { rolls, amount } = rollDice(heal, rng)
+  const hpAfter = Math.min(target.maxHp, target.hp + amount)
+  let nextState = state
+  const event: Omit<HealEvent, "outcome"> = {
+    targetId: target.id,
+    targetName: target.name,
+    amount,
+    rolls,
+    bonus: heal.bonus,
+    hpBefore: target.hp,
+    hpAfter,
+  }
+  let outcome: HealOutcome
+
+  if (isCharacter(target)) {
+    outcome = target.hp === 0 ? "regainedConsciousness" : "healed"
+    nextState = {
+      ...nextState,
+      players: changeCreatureInList(nextState.players, {
+        ...target,
+        hp: hpAfter,
+        saveRollFails: 0,
+        saveRollSuccesses: 0,
+        isStabilizedAfterSave: false,
+      }),
+    }
+  } else {
+    nextState = {
+      ...nextState,
+      enemies: changeCreatureInList(nextState.enemies, { ...target, hp: hpAfter }),
+    }
+    outcome = "healed"
+  }
+  return {
+    state: nextState,
+    event: { ...event, outcome },
+  }
+}
+
 function rollAndApplyDamage(
   state: GameState,
   target: Character | Enemy,
@@ -449,43 +502,11 @@ export function applyHeal(
   const targetError = getTargetError(target)
   if (targetError) return { isOk: false, errorText: targetError }
 
-  const { rolls, amount } = rollDice({ diceCount, diceSides, bonus }, rng)
-  const hpAfter = Math.min(target.maxHp, target.hp + amount)
-  const event: HealEvent = {
-    targetId: target.id,
-    targetName: target.name,
-    amount,
-    rolls,
-    bonus,
-    hpBefore: target.hp,
-    hpAfter,
-    outcome: target.hp === 0 ? "regainedConsciousness" : "healed",
-  }
-  if (isCharacter(target)) {
-    return {
-      isOk: true,
-      event,
-      state: {
-        ...state,
-        players: changeCreatureInList(state.players, {
-          ...target,
-          hp: hpAfter,
-          saveRollFails: 0,
-          saveRollSuccesses: 0,
-          isStabilizedAfterSave: false,
-        }),
-      },
-    }
-  }
-
-  // target considered enemy
+  const result = rollAndApplyHeal(state, target, { diceCount, diceSides, bonus }, rng)
   return {
     isOk: true,
-    event,
-    state: {
-      ...state,
-      enemies: changeCreatureInList(state.enemies, { ...target, hp: hpAfter }),
-    },
+    event: result.event,
+    state: result.state,
   }
 }
 
@@ -696,5 +717,69 @@ export function endTurn(
       saveEvents: result.saveEvents,
     },
     state: combatState.state,
+  }
+}
+
+export function applyHealingPotion(
+  state: GameState,
+  args: ApplyHealingPotionArgs,
+  rng: Rng,
+): ReturnResult<"apply_healing_potion"> {
+  const user = findCreatureById(state, args.userId)
+  if (!user) return { isOk: false, errorText: `Potion user with id: ${args.userId} is not found` }
+  if (user.hp === 0) return { isOk: false, errorText: `Potion user is down: ${user.name}` }
+  if (state.combat && user.id !== state.combat.activeCreatureId)
+    return {
+      isOk: false,
+      errorText: `Potion user with id ${user.id} is not current active creature`,
+    }
+
+  const target = findCreatureById(state, args.targetId)
+  if (!target)
+    return { isOk: false, errorText: `Potion target with id: ${args.targetId} is not found` }
+
+  const targetError = getTargetError(target)
+  if (targetError) return { isOk: false, errorText: targetError }
+  const potion = user.inventory.find((i) => i.id === args.potionId)
+  if (!potion) return { isOk: false, errorText: `Potion with id: ${args.potionId} is not found` }
+  if (potion.kind !== "healing_potion")
+    return { isOk: false, errorText: `Item with id: ${potion.id} is not a potion` }
+
+  const healingResult = rollAndApplyHeal(state, target, potion.healing, rng)
+  const userAfterHeal = findCreatureById(healingResult.state, args.userId)
+  if (!userAfterHeal)
+    throw new Error(`Potion user with id ${args.userId} disappeared after healing`)
+
+  let nextState: GameState
+  const inventoryAfterPotionUsage = userAfterHeal.inventory.filter((item) => item.id !== potion.id)
+
+  if (isCharacter(userAfterHeal)) {
+    nextState = {
+      ...healingResult.state,
+      players: changeCreatureInList(healingResult.state.players, {
+        ...userAfterHeal,
+        inventory: inventoryAfterPotionUsage,
+      }),
+    }
+  } else {
+    nextState = {
+      ...healingResult.state,
+      enemies: changeCreatureInList(healingResult.state.enemies, {
+        ...userAfterHeal,
+        inventory: inventoryAfterPotionUsage,
+      }),
+    }
+  }
+
+  return {
+    isOk: true,
+    event: {
+      ...healingResult.event,
+      userId: user.id,
+      userName: user.name,
+      potionId: potion.id,
+      potionName: potion.name,
+    },
+    state: nextState,
   }
 }

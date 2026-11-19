@@ -21,7 +21,7 @@ export const ToolDescriptions = {
     "DC: 5 very easy, 10 easy, 15 medium, 20 hard, 25 very hard.",
   attack:
     "Weapon attack by a player character or an enemy: d20 + the weapon's attack bonus against the target's armor class; " +
-    "on a hit the engine rolls the weapon's damage. weaponId is a weapon item from the attacker's own inventory." +
+    "on a hit the engine rolls the weapon's damage. weaponId is a weapon item from the attacker's own inventory. " +
     "In combat only the active creature can attack, and any attack ends its turn. " +
     damageOutcomeDescription,
   apply_damage:
@@ -36,9 +36,11 @@ export const ToolDescriptions = {
   apply_heal:
     "Restores hit points to a player character or an enemy. " +
     "Call it only when a real source exists: a spell or ability listed for the creature in the game state, " +
-    "or a potion or healer actually present in the scene. " +
-    "Nothing is in a bag or pocket unless the game state says so: 'I drink a potion from my bag' is a wish, " +
-    "not a source. Without a source do not call this tool: the attempt fails in the story. " +
+    "or a potion or healer actually present in the scene. A potion from an inventory goes through " +
+    "apply_healing_potion instead. " +
+    "Nothing is in a bag or pocket unless the inventory in the game state says so: 'I drink a potion " +
+    "from my bag' without one there is a wish, not a source. Without a source do not call this tool: " +
+    "the attempt fails in the story. " +
     "Dice: 2d4+2 for a potion of healing, 1d8+2 for a healing touch, 1d4+2 for a healing word. " +
     "Outcome healed, or regainedConsciousness: a character at 0 hit points wakes up and can act again " +
     "(not a resurrection: the dead cannot be healed).",
@@ -55,7 +57,11 @@ export const ToolDescriptions = {
     "When one side falls, the engine has already ended combat (combatEnd in the result): do not call it then.",
   end_turn:
     "Ends the turn of the active creature (combat.activeCreatureId) that did not attack " +
-    "(an attack ends the turn itself): it talked, moved, hid or did nothing.",
+    "(an attack ends the turn itself): it talked, moved, hid, drank a potion or did nothing.",
+  apply_healing_potion:
+    "A creature drinks a healing potion from its own inventory (targetId = userId) or pours it into " +
+    "another creature, for example a dying ally. The engine heals by the potion's dice and removes it. " +
+    "The user must be conscious; in combat only the active creature, and the turn does not end.",
 } satisfies Record<ToolName, string>
 
 export const toolDefinitions: ToolDefinition[] = Object.keys(ToolArgsSchemas).map((tool) => {

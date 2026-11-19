@@ -151,6 +151,38 @@ test("apply_heal call is executed by the engine and recorded", () => {
   assert.equal(r.state.players[0].saveRollFails, 0)
 })
 
+test("apply_healing_potion call is executed by the engine and recorded", () => {
+  // 1d4 = 3: from 2 HP to 5, the potion is gone
+  const potion = {
+    kind: "healing_potion" as const,
+    id: "potion",
+    name: "Зелье лечения",
+    quantity: 1 as const,
+    healing: { diceCount: 1, diceSides: 4 as const, bonus: 0 },
+  }
+  const player = state.players[0]
+  const wounded = {
+    ...state,
+    players: [{ ...player, hp: 2, inventory: [...player.inventory, potion] }],
+  }
+  const args = { userId: "p1", potionId: "potion", targetId: "p1" }
+  const r = executeTools([{ name: "apply_healing_potion", args }], wounded, fixed(0.5))
+  const rec = r.results[0]
+  assert.ok(rec.isOk && rec.tool === "apply_healing_potion")
+  assert.deepEqual(rec.args, args)
+  assert.equal(rec.event.potionName, "Зелье лечения")
+  assert.equal(r.state.players[0].hp, 5)
+  assert.deepEqual(r.state.players[0].inventory, player.inventory)
+})
+
+test("apply_healing_potion refused by the engine returns a failed result", () => {
+  // the dagger is not a potion
+  const args = { userId: "p1", potionId: "dagger", targetId: "p1" }
+  const r = executeTools([{ name: "apply_healing_potion", args }], state, fixed(0.5))
+  failureText(r.results[0], "apply_healing_potion")
+  assert.equal(r.state, state)
+})
+
 test("start_combat call is executed by the engine and recorded", () => {
   // p1 11+3=14, e1 11+2=13
   const args = { participantIds: ["e1", "p1"] }
@@ -628,6 +660,7 @@ test("handleMessage: model is offered every tool", async () => {
   assert.deepEqual(tools.map((t) => t.name).sort(), [
     "apply_damage",
     "apply_heal",
+    "apply_healing_potion",
     "attack",
     "death_save",
     "end_combat",
