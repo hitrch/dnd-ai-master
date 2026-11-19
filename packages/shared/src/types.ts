@@ -8,6 +8,7 @@ import {
   EndTurnArgs,
   RollCheckArgs,
   StartCombatArgs,
+  TransferItemsArgs,
 } from "./tools"
 import type { Skill } from "./skills"
 import type { GameState } from "./state"
@@ -49,8 +50,27 @@ export type ToolMap = {
     event: ApplyHealingPotionEvent
     args: ApplyHealingPotionArgs
   }
+  transfer_items: {
+    event: TransferItemsEvent
+    args: TransferItemsArgs
+  }
 }
 export type ToolName = keyof ToolMap
+
+export type TransferredItem = {
+  id: string
+  name: string
+}
+
+export type TransferItemsEvent = {
+  sourceId: string
+  sourceName: string
+  targetId: string
+  targetName: string
+  itemsTransferred: TransferredItem[]
+  moneyTransferred: number
+  notFoundIds: string[]
+}
 
 export type ApplyHealingPotionEvent = {
   userId: string

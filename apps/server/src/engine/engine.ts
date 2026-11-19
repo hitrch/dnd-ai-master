@@ -25,6 +25,8 @@ import {
   EndCombatEvent,
   ApplyHealingPotionArgs,
   HealOutcome,
+  TransferItemsArgs,
+  Item,
 } from "@dnd/shared"
 
 // Random number generator in [0, 1). Math.random in the game, replaced in tests.
@@ -82,6 +84,12 @@ function rollDice(diceInfo: Dice, rng: Rng): RollDiceResult {
     amount += roll
   }
   return { rolls, amount }
+}
+
+function changeCreatureInState(state: GameState, creature: Character | Enemy): GameState {
+  if (isCharacter(creature))
+    return { ...state, players: changeCreatureInList(state.players, creature) }
+  return { ...state, enemies: changeCreatureInList(state.enemies, creature) }
 }
 
 function changeCreatureInList<T extends Creature>(list: T[], creature: T): T[] {
@@ -336,21 +344,15 @@ function rollAndApplyHeal(
 
   if (isCharacter(target)) {
     outcome = target.hp === 0 ? "regainedConsciousness" : "healed"
-    nextState = {
-      ...nextState,
-      players: changeCreatureInList(nextState.players, {
-        ...target,
-        hp: hpAfter,
-        saveRollFails: 0,
-        saveRollSuccesses: 0,
-        isStabilizedAfterSave: false,
-      }),
-    }
+    nextState = changeCreatureInState(nextState, {
+      ...target,
+      hp: hpAfter,
+      saveRollFails: 0,
+      saveRollSuccesses: 0,
+      isStabilizedAfterSave: false,
+    })
   } else {
-    nextState = {
-      ...nextState,
-      enemies: changeCreatureInList(nextState.enemies, { ...target, hp: hpAfter }),
-    }
+    nextState = changeCreatureInState(nextState, { ...target, hp: hpAfter })
     outcome = "healed"
   }
   return {
@@ -415,20 +417,14 @@ function rollAndApplyDamage(
     }
 
     return {
-      state: {
-        ...state,
-        players: changeCreatureInList(state.players, newPlayerState),
-      },
+      state: changeCreatureInState(state, newPlayerState),
       event: { ...event, outcome },
     }
   }
 
   // target is an enemy here
   return {
-    state: {
-      ...state,
-      enemies: changeCreatureInList(state.enemies, { ...target, hp: hpAfter }),
-    },
+    state: changeCreatureInState(state, { ...target, hp: hpAfter }),
     event: { ...event, outcome: hpAfter > 0 ? "alive" : "dead" },
   }
 }
@@ -750,26 +746,11 @@ export function applyHealingPotion(
   if (!userAfterHeal)
     throw new Error(`Potion user with id ${args.userId} disappeared after healing`)
 
-  let nextState: GameState
   const inventoryAfterPotionUsage = userAfterHeal.inventory.filter((item) => item.id !== potion.id)
-
-  if (isCharacter(userAfterHeal)) {
-    nextState = {
-      ...healingResult.state,
-      players: changeCreatureInList(healingResult.state.players, {
-        ...userAfterHeal,
-        inventory: inventoryAfterPotionUsage,
-      }),
-    }
-  } else {
-    nextState = {
-      ...healingResult.state,
-      enemies: changeCreatureInList(healingResult.state.enemies, {
-        ...userAfterHeal,
-        inventory: inventoryAfterPotionUsage,
-      }),
-    }
-  }
+  const nextState = changeCreatureInState(healingResult.state, {
+    ...userAfterHeal,
+    inventory: inventoryAfterPotionUsage,
+  })
 
   return {
     isOk: true,
@@ -781,5 +762,62 @@ export function applyHealingPotion(
       potionName: potion.name,
     },
     state: nextState,
+  }
+}
+
+export function transferItems(
+  state: GameState,
+  args: TransferItemsArgs,
+): ReturnResult<"transfer_items"> {
+  const giver = findCreatureById(state, args.sourceId)
+  if (!giver) return { isOk: false, errorText: `No giver with id ${args.sourceId} found` }
+
+  const receiver = findCreatureById(state, args.targetId)
+  if (!receiver) return { isOk: false, errorText: `No receiver with id ${args.targetId} found` }
+  if (giver.id === receiver.id) return { isOk: false, errorText: `Transferring to self` }
+
+  const error = getTargetError(receiver)
+  if (error) return { isOk: false, errorText: error }
+  if (state.combat && giver.id !== state.combat.activeCreatureId)
+    return {
+      isOk: false,
+      errorText: `Creature with id ${giver.id} is not the one active in combat now`,
+    }
+
+  const giverItemsIdsSet = new Set(giver.inventory.map((i) => i.id))
+  const itemsToTransfer = giver.inventory.filter((item) => args.itemIds.includes(item.id))
+  const itemsNotFoundIds = args.itemIds.filter((id) => !giverItemsIdsSet.has(id))
+  const moneyToTransfer = Math.min(giver.money, args.moneyToTransfer)
+
+  if (!moneyToTransfer && !itemsToTransfer.length)
+    return { isOk: false, errorText: `Nothing to transfer` }
+
+  const stateAfterReceiverUpdated = changeCreatureInState(state, {
+    ...receiver,
+    money: receiver.money + moneyToTransfer,
+    inventory: [...receiver.inventory, ...itemsToTransfer],
+  })
+  const itemsToTransferIdSet = new Set(itemsToTransfer.map(i => i.id))
+  const resultState = changeCreatureInState(stateAfterReceiverUpdated, {
+    ...giver,
+    money: giver.money - moneyToTransfer,
+    inventory: giver.inventory.filter((item) => !itemsToTransferIdSet.has(item.id)),
+  })
+
+  const itemsTransferredInEventFormat = itemsToTransfer.map((item) => {
+    return { id: item.id, name: item.name }
+  })
+  return {
+    isOk: true,
+    event: {
+      sourceId: giver.id,
+      sourceName: giver.name,
+      targetId: receiver.id,
+      targetName: receiver.name,
+      itemsTransferred: itemsTransferredInEventFormat,
+      moneyTransferred: moneyToTransfer,
+      notFoundIds: itemsNotFoundIds,
+    },
+    state: resultState,
   }
 }

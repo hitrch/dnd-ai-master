@@ -12,6 +12,7 @@ import {
   startCombat,
   endCombat,
   endTurn,
+  transferItems,
 } from "./engine"
 
 const state = GameStateSchema.parse({
@@ -1770,4 +1771,194 @@ test("potion schema: healing dice use the same limits, a potion is one item", ()
   assert.equal(make({ ...potion, healing: { diceCount: 11, diceSides: 4, bonus: 0 } }), false)
   assert.equal(make({ ...potion, healing: undefined }), false)
   assert.equal(make({ ...potion, quantity: 2 }), false)
+})
+
+// ---------- item transfer ----------
+
+// p1 Арвен: dagger, potion, 10 coins; p2 Борин: axe, 4 coins; e1 the goblin: scimitar, key, 3 coins.
+// Every item id is unique in the whole state, as the state schema requires.
+const key = {
+  kind: "other" as const,
+  id: "key",
+  name: "Ржавый ключ",
+  quantity: 1 as const,
+  description: "Ключ от двери башни",
+}
+const axe = { ...dagger, id: "axe", name: "Топор" }
+const looting: GameState = GameStateSchema.parse({
+  ...state,
+  players: [...state.players, { ...ally, inventory: [axe], money: 4 }],
+  enemies: [{ ...state.enemies[0], inventory: [...state.enemies[0].inventory, key] }],
+})
+const scimitar = state.enemies[0].inventory[0]
+const potionItem = state.players[0].inventory[1]
+
+// The looting state with some fields of one creature replaced
+function lootingWith(id: string, patch: Partial<Player>): GameState {
+  return {
+    ...looting,
+    players: looting.players.map((p) => (p.id === id ? { ...p, ...patch } : p)),
+    enemies: looting.enemies.map((e) => (e.id === id ? { ...e, ...patch } : e)),
+  }
+}
+
+const deadGoblin = lootingWith("e1", { hp: 0 })
+const lootGoblin = {
+  sourceId: "e1",
+  targetId: "p1",
+  itemIds: ["scimitar", "key"],
+  moneyToTransfer: 3,
+}
+
+test("transfer: looting a dead enemy moves the items and coins, fills the event", () => {
+  const r = transferItems(deadGoblin, lootGoblin)
+  assert.ok(r.isOk)
+  assert.deepEqual(r.event, {
+    sourceId: "e1",
+    sourceName: "Гоблин-часовой",
+    targetId: "p1",
+    targetName: "Арвен",
+    itemsTransferred: [
+      { id: "scimitar", name: "Скимитар" },
+      { id: "key", name: "Ржавый ключ" },
+    ],
+    moneyTransferred: 3,
+    notFoundIds: [],
+  })
+  const [p1] = r.state.players
+  const [e1] = r.state.enemies
+  assert.deepEqual(p1.inventory, [dagger, potionItem, scimitar, key])
+  assert.equal(p1.money, 13)
+  assert.deepEqual(e1.inventory, [])
+  assert.equal(e1.money, 0)
+  // the result is a valid state: no item exists twice
+  assert.equal(GameStateSchema.safeParse(r.state).success, true)
+  // the original state is untouched
+  assert.equal(deadGoblin.enemies[0].inventory.length, 2)
+  assert.equal(deadGoblin.players[0].money, 10)
+})
+
+test("transfer: the giver keeps the items that were not asked for", () => {
+  const r = transferItems(looting, {
+    sourceId: "p1",
+    targetId: "p2",
+    itemIds: ["potion"],
+    moneyToTransfer: 0,
+  })
+  assert.ok(r.isOk)
+  const [p1, p2] = r.state.players
+  assert.deepEqual(p1.inventory, [dagger])
+  assert.deepEqual(p2.inventory, [axe, potionItem])
+  assert.equal(p1.money, 10)
+  assert.equal(p2.money, 4)
+  assert.equal(r.event.moneyTransferred, 0)
+})
+
+test("transfer: unknown ids are reported, the found items still move", () => {
+  const r = transferItems(deadGoblin, { ...lootGoblin, itemIds: ["bow", "scimitar", "dagger"] })
+  assert.ok(r.isOk)
+  // the dagger exists, but in someone else's inventory
+  assert.deepEqual(r.event.notFoundIds, ["bow", "dagger"])
+  assert.deepEqual(r.event.itemsTransferred, [{ id: "scimitar", name: "Скимитар" }])
+  assert.deepEqual(r.state.enemies[0].inventory, [key])
+})
+
+test("transfer: a repeated id moves the item once", () => {
+  const r = transferItems(deadGoblin, { ...lootGoblin, itemIds: ["scimitar", "scimitar"] })
+  assert.ok(r.isOk)
+  assert.deepEqual(r.event.itemsTransferred, [{ id: "scimitar", name: "Скимитар" }])
+  assert.equal(r.state.players[0].inventory.filter((i) => i.id === "scimitar").length, 1)
+  assert.equal(GameStateSchema.safeParse(r.state).success, true)
+})
+
+test("transfer: no more coins than the giver has", () => {
+  const r = transferItems(deadGoblin, { ...lootGoblin, itemIds: [], moneyToTransfer: 100 })
+  assert.ok(r.isOk)
+  assert.equal(r.event.moneyTransferred, 3)
+  assert.equal(r.state.players[0].money, 13)
+  assert.equal(r.state.enemies[0].money, 0)
+  assert.deepEqual(r.event.itemsTransferred, [])
+})
+
+test("transfer: a conscious creature can give, a down character can be looted", () => {
+  // the engine does not check consent: a living goblin gives its key away
+  const given = transferItems(looting, { ...lootGoblin, itemIds: ["key"], moneyToTransfer: 0 })
+  assert.ok(given.isOk)
+  // a down (not dead) character is looted by an ally
+  const downArwen = lootingWith("p1", { hp: 0 })
+  const looted = transferItems(downArwen, {
+    sourceId: "p1",
+    targetId: "p2",
+    itemIds: ["dagger"],
+    moneyToTransfer: 0,
+  })
+  assert.ok(looted.isOk)
+  assert.deepEqual(looted.state.players[1].inventory, [axe, dagger])
+})
+
+test("transfer: in combat the active giver hands an item over and keeps the turn", () => {
+  const s = inCombat(["p1", "e1", "p2"], "p1", looting)
+  const r = transferItems(s, {
+    sourceId: "p1",
+    targetId: "p2",
+    itemIds: ["potion"],
+    moneyToTransfer: 0,
+  })
+  assert.ok(r.isOk)
+  assert.deepEqual(r.state.combat, s.combat)
+})
+
+test("transfer: refusals change nothing", () => {
+  const give = { sourceId: "p1", targetId: "p2", itemIds: ["potion"], moneyToTransfer: 0 }
+  const cases: [string, GameState, typeof give][] = [
+    ["unknown giver", looting, { ...give, sourceId: "nobody" }],
+    ["unknown receiver", looting, { ...give, targetId: "ghost" }],
+    ["giver is the receiver", looting, { ...give, targetId: "p1" }],
+    ["dead character receives", lootingWith("p2", { hp: 0, saveRollFails: 3 }), give],
+    ["enemy at 0 HP receives", deadGoblin, { ...give, targetId: "e1" }],
+    // the looted body cannot act, so nothing is taken from it in combat
+    ["giver is not active in combat", inCombat(["p1", "e1"], "p1", deadGoblin), lootGoblin],
+    ["no item found and no coins", looting, { ...give, itemIds: ["bow"] }],
+    [
+      "coins asked, none to give",
+      lootingWith("p1", { money: 0 }),
+      { ...give, itemIds: [], moneyToTransfer: 5 },
+    ],
+  ]
+  for (const [name, s, args] of cases) {
+    const r = transferItems(s, args)
+    assert.equal(r.isOk, false, name)
+    assert.ok(!r.isOk && r.errorText.length > 0, name)
+  }
+})
+
+test("transfer args schema: no items and no coins by default, coins are a non-negative integer", () => {
+  const schema = ToolArgsSchemas.transfer_items
+  const parsed = schema.parse({ sourceId: "e1", targetId: "p1" })
+  assert.deepEqual(parsed.itemIds, [])
+  assert.equal(parsed.moneyToTransfer, 0)
+  assert.equal(schema.safeParse({ ...lootGoblin, moneyToTransfer: 0 }).success, true)
+  assert.equal(schema.safeParse({ ...lootGoblin, moneyToTransfer: -1 }).success, false)
+  assert.equal(schema.safeParse({ ...lootGoblin, moneyToTransfer: 1.5 }).success, false)
+  assert.equal(schema.safeParse({ ...lootGoblin, sourceId: undefined }).success, false)
+})
+
+test("state schema: item ids are unique across all inventories", () => {
+  // the same id with two creatures
+  const twoCreatures = lootingWith("p2", { inventory: [axe, { ...key }] })
+  assert.equal(GameStateSchema.safeParse(twoCreatures).success, false)
+  // the same id twice with one creature
+  const oneCreature = lootingWith("p1", { inventory: [dagger, dagger] })
+  assert.equal(GameStateSchema.safeParse(oneCreature).success, false)
+  assert.equal(GameStateSchema.safeParse(looting).success, true)
+})
+
+test("other item schema: needs a description and is one item", () => {
+  const make = (item: unknown) => lootingWith("p2", { inventory: [item as typeof axe] })
+  assert.equal(GameStateSchema.safeParse(make({ ...key, id: "key-2" })).success, true)
+  assert.equal(
+    GameStateSchema.safeParse(make({ ...key, id: "key-2", description: undefined })).success,
+    false,
+  )
+  assert.equal(GameStateSchema.safeParse(make({ ...key, id: "key-2", quantity: 2 })).success, false)
 })

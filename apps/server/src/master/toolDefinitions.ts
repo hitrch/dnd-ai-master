@@ -62,6 +62,11 @@ export const ToolDescriptions = {
     "A creature drinks a healing potion from its own inventory (targetId = userId) or pours it into " +
     "another creature, for example a dying ally. The engine heals by the potion's dice and removes it. " +
     "The user must be conscious; in combat only the active creature, and the turn does not end.",
+  transfer_items:
+    "Moves items (ids from the giver's inventory) and coins from one creature to another: looting a body " +
+    "or an unconscious creature, giving an item to an ally, paying. A conscious creature gives only " +
+    "if it agrees in the story. In combat only the active creature gives (loot bodies after the fight); " +
+    "the turn does not end.",
 } satisfies Record<ToolName, string>
 
 export const toolDefinitions: ToolDefinition[] = Object.keys(ToolArgsSchemas).map((tool) => {

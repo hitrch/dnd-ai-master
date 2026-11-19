@@ -117,6 +117,13 @@ export function createSampleState(): GameState {
             attackBonus: 4,
             damage: { diceCount: 1, diceSides: 6, bonus: 2 },
           },
+          {
+            kind: "other",
+            id: "tower-key",
+            name: "Ржавый ключ",
+            quantity: 1,
+            description: "Тяжёлый ключ на шнурке, похоже, от двери башни",
+          },
         ],
         skills: { stealth: 6 },
         initiativeModifier: 2,

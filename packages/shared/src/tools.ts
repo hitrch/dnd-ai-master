@@ -54,6 +54,14 @@ export const ApplyHealingPotionArgsSchema = z.object({
 })
 export type ApplyHealingPotionArgs = z.infer<typeof ApplyHealingPotionArgsSchema>
 
+export const TransferItemsArgsSchema = z.object({
+  sourceId: z.string(),
+  targetId: z.string(),
+  itemIds: z.array(z.string()).default([]),
+  moneyToTransfer: z.number().int().min(0).default(0),
+})
+export type TransferItemsArgs = z.infer<typeof TransferItemsArgsSchema>
+
 export const ToolArgsSchemas = {
   roll_check: RollCheckArgsSchema,
   apply_damage: ApplyDamageArgsSchema,
@@ -64,4 +72,5 @@ export const ToolArgsSchemas = {
   end_combat: EndCombatArgsSchema,
   end_turn: EndTurnArgsSchema,
   apply_healing_potion: ApplyHealingPotionArgsSchema,
+  transfer_items: TransferItemsArgsSchema,
 } satisfies Record<ToolName, z.ZodType>

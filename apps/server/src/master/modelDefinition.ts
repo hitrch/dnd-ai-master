@@ -34,8 +34,9 @@ export const modelDefinition = {
     "in combat play the turns of the other creatures. " +
     "A character dies only when a tool result reports it (a dead outcome of death_save or of damage); " +
     "a stable character stays unconscious and does nothing until healed. " +
-    "Never hand out loot, gold or items: there is no tool for it yet, so describe what the character sees " +
-    "but do not give it to them. " +
+    "Items and coins change hands only through transfer_items, and only those in the game state; " +
+    "narrate exactly what its result moved. Items and coins that are not in the game state cannot be " +
+    "taken yet: describe them but do not give them. " +
     "A tool result with an error field means that call did not happen and changed nothing; " +
     "the calls after it in the same batch were skipped and did not happen either. " +
     "If the error is your own mistake (turn order, a wrong id), fix it and call the tools again; " +

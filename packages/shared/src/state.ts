@@ -13,6 +13,13 @@ const BaseItemSchema = z.object({
   quantity: z.literal(1),
 })
 
+export const OtherItemSchema = z.object({
+  ...BaseItemSchema.shape,
+  kind: z.literal("other"),
+  description: z.string(),
+})
+export type OtherItem = z.infer<typeof OtherItemSchema>
+
 export const HealingPotionSchema = z.object({
   ...BaseItemSchema.shape,
   kind: z.literal("healing_potion"),
@@ -28,7 +35,11 @@ export const WeaponSchema = z.object({
 })
 export type Weapon = z.infer<typeof WeaponSchema>
 
-export const ItemSchema = z.discriminatedUnion("kind", [HealingPotionSchema, WeaponSchema])
+export const ItemSchema = z.discriminatedUnion("kind", [
+  HealingPotionSchema,
+  WeaponSchema,
+  OtherItemSchema,
+])
 export type Item = z.infer<typeof ItemSchema>
 
 const CreatureSchema = z.object({
@@ -65,10 +76,21 @@ export const CombatSchema = z.object({
 })
 export type Combat = z.infer<typeof CombatSchema>
 
-export const GameStateSchema = z.object({
-  location: z.string(),
-  players: z.array(CharacterSchema),
-  enemies: z.array(EnemySchema),
-  combat: CombatSchema.nullable(),
-})
+export const GameStateSchema = z
+  .object({
+    location: z.string(),
+    players: z.array(CharacterSchema),
+    enemies: z.array(EnemySchema),
+    combat: CombatSchema.nullable(),
+  })
+  .refine(
+    (data) => {
+      const creaturesItemsIds = [...data.players, ...data.enemies]
+        .flatMap((c) => c.inventory)
+        .map((i) => i.id)
+      const uniqueItemsIds = new Set(creaturesItemsIds)
+      return uniqueItemsIds.size === creaturesItemsIds.length
+    },
+    { message: "Duplicate item ids" },
+  )
 export type GameState = z.infer<typeof GameStateSchema>

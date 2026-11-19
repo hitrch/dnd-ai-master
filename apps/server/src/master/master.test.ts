@@ -183,6 +183,25 @@ test("apply_healing_potion refused by the engine returns a failed result", () =>
   assert.equal(r.state, state)
 })
 
+test("transfer_items call is executed by the engine and recorded with default args", () => {
+  // Арвен gives her dagger to the goblin; no coins in the call, the schema fills in 0
+  const args = { sourceId: "p1", targetId: "e1", itemIds: ["dagger"] }
+  const r = executeTools([{ name: "transfer_items", args }], state, fixed(0.5))
+  const rec = r.results[0]
+  assert.ok(rec.isOk && rec.tool === "transfer_items")
+  assert.deepEqual(rec.args, { ...args, moneyToTransfer: 0 })
+  assert.deepEqual(rec.event.itemsTransferred, [{ id: "dagger", name: "Кинжал" }])
+  assert.deepEqual(r.state.players[0].inventory, [])
+  assert.deepEqual(r.state.enemies[0].inventory, state.players[0].inventory)
+})
+
+test("transfer_items refused by the engine returns a failed result", () => {
+  const args = { sourceId: "p1", targetId: "p1", itemIds: ["dagger"] }
+  const r = executeTools([{ name: "transfer_items", args }], state, fixed(0.5))
+  failureText(r.results[0], "transfer_items")
+  assert.equal(r.state, state)
+})
+
 test("start_combat call is executed by the engine and recorded", () => {
   // p1 11+3=14, e1 11+2=13
   const args = { participantIds: ["e1", "p1"] }
@@ -667,6 +686,7 @@ test("handleMessage: model is offered every tool", async () => {
     "end_turn",
     "roll_check",
     "start_combat",
+    "transfer_items",
   ])
   for (const t of tools) {
     assert.ok(t.description.length > 0, `${t.name} has no description`)

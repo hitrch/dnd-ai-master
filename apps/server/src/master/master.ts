@@ -9,6 +9,7 @@ import {
   endTurn,
   rollCheck,
   startCombat,
+  transferItems,
 } from "../engine/engine"
 import type { Rng } from "../engine/engine"
 import { ToolArgsSchemas } from "@dnd/shared"
@@ -239,6 +240,28 @@ export function executeTools(tools: ToolCall[], gameState: GameState, rng: Rng):
           tool: "apply_healing_potion",
           args: applyHealingPotionArgs.data,
           event: applyHealingPotionResult.event,
+        })
+        break
+      }
+      case "transfer_items": {
+        const transferItemsArgs = ToolArgsSchemas.transfer_items.safeParse(call.args)
+        if (!transferItemsArgs.success) {
+          fail(call.name, z.prettifyError(transferItemsArgs.error))
+          continue
+        }
+
+        const transferItemsResult = transferItems(draft, transferItemsArgs.data)
+        if (!transferItemsResult.isOk) {
+          fail(call.name, transferItemsResult.errorText)
+          continue
+        }
+
+        draft = transferItemsResult.state
+        results.push({
+          isOk: true,
+          tool: "transfer_items",
+          args: transferItemsArgs.data,
+          event: transferItemsResult.event,
         })
         break
       }
