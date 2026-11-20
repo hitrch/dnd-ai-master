@@ -15,6 +15,7 @@ import {
   transferItems,
   deleteItems,
   giveItems,
+  spawnEnemies,
 } from "./engine"
 
 const state = GameStateSchema.parse({
@@ -32,7 +33,6 @@ const state = GameStateSchema.parse({
           kind: "weapon",
           id: "dagger",
           name: "Кинжал",
-          quantity: 1,
           attackBonus: 5,
           damage: { diceCount: 1, diceSides: 4, bonus: 3 },
         },
@@ -40,7 +40,6 @@ const state = GameStateSchema.parse({
           kind: "healing_potion",
           id: "potion",
           name: "Зелье лечения",
-          quantity: 1,
           healing: { diceCount: 2, diceSides: 4, bonus: 2 },
         },
       ],
@@ -64,7 +63,6 @@ const state = GameStateSchema.parse({
           kind: "weapon",
           id: "scimitar",
           name: "Скимитар",
-          quantity: 1,
           attackBonus: 4,
           damage: { diceCount: 1, diceSides: 6, bonus: 2 },
         },
@@ -918,7 +916,7 @@ test("heal args schema: same dice limits as damage, flat args", () => {
 })
 
 test("weapon schema: damage dice use the same limits", () => {
-  const weapon = { kind: "weapon", id: "w", name: "W", quantity: 1, attackBonus: 0 }
+  const weapon = { kind: "weapon", id: "w", name: "W", attackBonus: 0 }
   const make = (damage: unknown) =>
     GameStateSchema.safeParse({
       ...state,
@@ -930,15 +928,12 @@ test("weapon schema: damage dice use the same limits", () => {
   assert.equal(make({ diceCount: 1, diceSides: 6, bonus: 11 }), false)
 })
 
-test("inventory schema: one copy per item, money is a non-negative integer", () => {
-  const dagger = state.players[0].inventory[0]
+test("inventory schema: known kinds only, money is a non-negative integer", () => {
   const potion = state.players[0].inventory[1]
   const withPlayer = (patch: Record<string, unknown>) =>
     GameStateSchema.safeParse({ ...state, players: [{ ...state.players[0], ...patch }] }).success
 
   assert.equal(withPlayer({ inventory: [] }), true)
-  assert.equal(withPlayer({ inventory: [{ ...dagger, quantity: 2 }] }), false)
-  assert.equal(withPlayer({ inventory: [{ ...potion, quantity: 2 }] }), false)
   assert.equal(withPlayer({ inventory: [{ ...potion, kind: "scroll" }] }), false)
   // a weapon without its fields is not a weapon
   assert.equal(withPlayer({ inventory: [{ ...potion, kind: "weapon" }] }), false)
@@ -1762,7 +1757,7 @@ test("potion: refusals roll nothing", () => {
   }
 })
 
-test("potion schema: healing dice use the same limits, a potion is one item", () => {
+test("potion schema: healing dice use the same limits", () => {
   const potion = state.players[0].inventory[1]
   const make = (item: unknown) =>
     GameStateSchema.safeParse({
@@ -1772,7 +1767,6 @@ test("potion schema: healing dice use the same limits, a potion is one item", ()
   assert.equal(make(potion), true)
   assert.equal(make({ ...potion, healing: { diceCount: 11, diceSides: 4, bonus: 0 } }), false)
   assert.equal(make({ ...potion, healing: undefined }), false)
-  assert.equal(make({ ...potion, quantity: 2 }), false)
 })
 
 // ---------- item transfer ----------
@@ -1783,7 +1777,6 @@ const key = {
   kind: "other" as const,
   id: "key",
   name: "Ржавый ключ",
-  quantity: 1 as const,
   description: "Ключ от двери башни",
 }
 const axe = { ...dagger, id: "axe", name: "Топор" }
@@ -1955,14 +1948,13 @@ test("state schema: item ids are unique across all inventories", () => {
   assert.equal(GameStateSchema.safeParse(looting).success, true)
 })
 
-test("other item schema: needs a description and is one item", () => {
+test("other item schema: needs a description", () => {
   const make = (item: unknown) => lootingWith("p2", { inventory: [item as typeof axe] })
   assert.equal(GameStateSchema.safeParse(make({ ...key, id: "key-2" })).success, true)
   assert.equal(
     GameStateSchema.safeParse(make({ ...key, id: "key-2", description: undefined })).success,
     false,
   )
-  assert.equal(GameStateSchema.safeParse(make({ ...key, id: "key-2", quantity: 2 })).success, false)
 })
 
 // ---------- item deletion ----------
@@ -2055,20 +2047,17 @@ test("delete args schema: no items and no coins by default, coins are a non-nega
 const rope = {
   kind: "other" as const,
   name: "Верёвка",
-  quantity: 1 as const,
   description: "50 футов",
 }
 const shortsword = {
   kind: "weapon" as const,
   name: "Короткий меч",
-  quantity: 1 as const,
   attackBonus: 5,
   damage: { diceCount: 1, diceSides: 6 as const, bonus: 3 },
 }
 const smallPotion = {
   kind: "healing_potion" as const,
   name: "Малое зелье",
-  quantity: 1 as const,
   healing: { diceCount: 2, diceSides: 4 as const, bonus: 2 },
 }
 
@@ -2195,11 +2184,191 @@ test("give args schema: items without ids, every kind keeps its own fields", () 
       "damage dice out of range",
       { ...shortsword, damage: { diceCount: 20, diceSides: 6, bonus: 0 } },
     ],
-    ["two of one item", { ...rope, quantity: 2 }],
     ["unknown kind", { ...rope, kind: "armor" }],
   ]
   for (const [name, item] of bad) {
     assert.equal(schema.safeParse({ targetId: "p1", items: [item] }).success, false, name)
   }
   assert.equal(schema.safeParse({ targetId: "p1", moneyToGive: -1 }).success, false)
+})
+
+// ---------- spawning enemies ----------
+
+// Enemy data as the model sends it: no id, no hp
+const orc = {
+  name: "Орк",
+  maxHp: 15,
+  money: 2,
+  armorClass: 13,
+  initiativeModifier: 1,
+  skills: { athletics: 5 },
+  inventory: [
+    {
+      kind: "weapon" as const,
+      name: "Секира",
+      attackBonus: 5,
+      damage: { diceCount: 1, diceSides: 12 as const, bonus: 3 },
+    },
+  ],
+}
+const wolf = {
+  name: "Волк",
+  maxHp: 11,
+  money: 0,
+  armorClass: 13,
+  initiativeModifier: 2,
+  skills: {},
+  inventory: [],
+}
+
+test("spawn: enemies get engine ids and full hp, their items get ids, the event lists them", () => {
+  const r = spawnEnemies(state, { enemies: [orc, wolf] })
+  assert.ok(r.isOk)
+  assert.deepEqual(r.event, {
+    enemies: [
+      { id: "enemy-1", name: "Орк" },
+      { id: "enemy-2", name: "Волк" },
+    ],
+    hasEnteredCombat: false,
+  })
+  const [, spawnedOrc, spawnedWolf] = r.state.enemies
+  assert.deepEqual(spawnedOrc, {
+    ...orc,
+    id: "enemy-1",
+    hp: 15,
+    inventory: [{ ...orc.inventory[0], id: "item-1" }],
+  })
+  assert.deepEqual(spawnedWolf, { ...wolf, id: "enemy-2", hp: 11 })
+  assert.equal(r.state.combat, null)
+  // the old creatures stay, the result is a valid state, the original is untouched
+  assert.deepEqual(r.state.enemies[0], state.enemies[0])
+  assert.deepEqual(r.state.players, state.players)
+  assert.equal(GameStateSchema.safeParse(r.state).success, true)
+  assert.equal(state.enemies.length, 1)
+})
+
+test("spawn: creature ids taken by enemies or players are skipped", () => {
+  const s: GameState = {
+    ...state,
+    players: [{ ...state.players[0], id: "enemy-1" }],
+    enemies: [{ ...state.enemies[0], id: "enemy-3" }],
+  }
+  const r = spawnEnemies(s, { enemies: [wolf, wolf] })
+  assert.ok(r.isOk)
+  assert.deepEqual(
+    r.event.enemies.map((e) => e.id),
+    ["enemy-2", "enemy-4"],
+  )
+})
+
+test("spawn: item ids are unique across the state and across the enemies of one call", () => {
+  // item-1 is already with Арвен
+  const s: GameState = {
+    ...state,
+    players: [
+      {
+        ...state.players[0],
+        inventory: [...state.players[0].inventory, { ...rope, id: "item-1" }],
+      },
+    ],
+  }
+  const r = spawnEnemies(s, { enemies: [orc, orc] })
+  assert.ok(r.isOk)
+  assert.deepEqual(
+    r.state.enemies.slice(1).map((e) => e.inventory.map((i) => i.id)),
+    [["item-2"], ["item-3"]],
+  )
+  assert.equal(GameStateSchema.safeParse(r.state).success, true)
+})
+
+test("spawn: ids are predictable, the same call gives the same ids", () => {
+  const a = spawnEnemies(state, { enemies: [orc] })
+  const b = spawnEnemies(state, { enemies: [orc] })
+  assert.ok(a.isOk && b.isOk)
+  assert.deepEqual(a.state, b.state)
+})
+
+test("spawn: in combat new enemies join at the end of the order, the turn and round stay", () => {
+  const s: GameState = {
+    ...state,
+    combat: { order: ["p1", "e1"], round: 2, activeCreatureId: "p1" },
+  }
+  const r = spawnEnemies(s, { enemies: [orc, wolf] })
+  assert.ok(r.isOk)
+  assert.equal(r.event.hasEnteredCombat, true)
+  assert.deepEqual(r.state.combat, {
+    order: ["p1", "e1", "enemy-1", "enemy-2"],
+    round: 2,
+    activeCreatureId: "p1",
+  })
+  assert.deepEqual(s.combat?.order, ["p1", "e1"])
+})
+
+test("spawn: a newcomer acts at the end of the current round, with a weapon from its inventory", () => {
+  const s: GameState = {
+    ...state,
+    combat: { order: ["p1", "e1"], round: 1, activeCreatureId: "e1" },
+  }
+  const spawned = spawnEnemies(s, { enemies: [orc] })
+  assert.ok(spawned.isOk)
+  const turn = endTurn(spawned.state, { creatureId: "e1" })
+  assert.ok(turn.isOk)
+  assert.equal(turn.event.nextTurn?.nextCreatureId, "enemy-1")
+  assert.equal(turn.event.nextTurn?.round, 1)
+  const hit = attack(
+    turn.state,
+    { attackerId: "enemy-1", weaponId: "item-1", targetId: "p1" },
+    fixed(0.5),
+  )
+  assert.ok(hit.isOk)
+  assert.equal(hit.event.weaponName, "Секира")
+  assert.equal(hit.event.nextTurn?.nextCreatureId, "p1")
+  assert.equal(hit.event.nextTurn?.round, 2)
+})
+
+test("spawn: combat goes on while a newcomer stands, even after the first enemy falls", () => {
+  // e1 at 1 HP dies (d20 = 11, 16 vs AC 15; d4 = 3)
+  const s: GameState = {
+    ...state,
+    enemies: [{ ...state.enemies[0], hp: 1 }],
+    combat: { order: ["p1", "e1"], round: 1, activeCreatureId: "p1" },
+  }
+  const spawned = spawnEnemies(s, { enemies: [wolf] })
+  assert.ok(spawned.isOk)
+  const r = attack(spawned.state, daggerAtGoblin, sequence(0.5, 0.5).rng)
+  assert.ok(r.isOk)
+  assert.equal(r.event.damage?.outcome, "dead")
+  assert.equal(r.event.combatEnd, null)
+  assert.equal(r.event.nextTurn?.nextCreatureId, "enemy-1")
+})
+
+test("spawn: an empty list is refused when the engine is called directly", () => {
+  const r = spawnEnemies(state, { enemies: [] })
+  assert.equal(r.isOk, false)
+})
+
+test("spawn args schema: no id or hp from the model, bounds on the numbers, at least one enemy", () => {
+  const schema = ToolArgsSchemas.spawn_enemies
+  // no inventory means an empty one
+  const { inventory: _, ...bare } = wolf
+  const parsed = schema.parse({ enemies: [{ ...bare, id: "e1", hp: 999 }] })
+  assert.deepEqual(parsed.enemies[0].inventory, [])
+  // an id and hp from the model are dropped, not kept
+  assert.equal(Object.hasOwn(parsed.enemies[0], "id"), false)
+  assert.equal(Object.hasOwn(parsed.enemies[0], "hp"), false)
+
+  assert.equal(schema.safeParse({ enemies: [] }).success, false)
+  const bad: [string, unknown][] = [
+    ["maxHp over 200", { ...wolf, maxHp: 201 }],
+    ["maxHp 0", { ...wolf, maxHp: 0 }],
+    ["armor class over 25", { ...wolf, armorClass: 26 }],
+    ["skill over 15", { ...wolf, skills: { stealth: 16 } }],
+    ["initiative over 10", { ...wolf, initiativeModifier: 11 }],
+    ["negative money", { ...wolf, money: -1 }],
+    ["no name", { ...wolf, name: undefined }],
+    ["item with an unknown kind", { ...orc, inventory: [{ ...rope, kind: "armor" }] }],
+  ]
+  for (const [name, enemy] of bad) {
+    assert.equal(schema.safeParse({ enemies: [enemy] }).success, false, name)
+  }
 })

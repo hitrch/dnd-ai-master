@@ -9,6 +9,7 @@ import {
   EndTurnArgs,
   GiveItemsArgs,
   RollCheckArgs,
+  SpawnEnemiesArgs,
   StartCombatArgs,
   TransferItemsArgs,
 } from "./tools"
@@ -64,8 +65,22 @@ export type ToolMap = {
     event: GiveItemsEvent
     args: GiveItemsArgs
   }
+  spawn_enemies: {
+    event: SpawnEnemiesEvent
+    args: SpawnEnemiesArgs
+  }
 }
 export type ToolName = keyof ToolMap
+
+export type EnemySummary = {
+  id: string
+  name: string
+}
+
+export type SpawnEnemiesEvent = {
+  enemies: EnemySummary[]
+  hasEnteredCombat: boolean
+}
 
 export type GiveItemsEvent = {
   targetId: string

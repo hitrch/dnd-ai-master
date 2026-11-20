@@ -1,7 +1,7 @@
 import { z } from "zod"
 import { SkillSchema } from "./skills"
 import type { ToolName } from "./types"
-import { DiceSchema, ItemWithoutIdSchema } from "./state"
+import { DiceSchema, EnemySchema, ItemWithoutIdSchema } from "./state"
 
 export const RollCheckArgsSchema = z.object({
   characterId: z.string(),
@@ -76,6 +76,18 @@ export const GiveItemsArgsSchema = z.object({
 })
 export type GiveItemsArgs = z.infer<typeof GiveItemsArgsSchema>
 
+export const SpawnEnemiesArgsSchema = z.object({
+  enemies: z
+    .array(
+      z.object({
+        ...EnemySchema.omit({ id: true, hp: true }).shape,
+        inventory: z.array(ItemWithoutIdSchema).default([]),
+      }),
+    )
+    .min(1),
+})
+export type SpawnEnemiesArgs = z.infer<typeof SpawnEnemiesArgsSchema>
+
 export const ToolArgsSchemas = {
   roll_check: RollCheckArgsSchema,
   apply_damage: ApplyDamageArgsSchema,
@@ -89,4 +101,5 @@ export const ToolArgsSchemas = {
   transfer_items: TransferItemsArgsSchema,
   delete_items: DeleteItemsArgsSchema,
   give_items: GiveItemsArgsSchema,
+  spawn_enemies: SpawnEnemiesArgsSchema,
 } satisfies Record<ToolName, z.ZodType>

@@ -79,12 +79,19 @@ export const ToolDescriptions = {
     "Removes items (ids from the creature's inventory) or coins from the game: lost, broken, used up, " +
     "or paid to someone who is not in the game state. A healing potion is removed by " +
     "apply_healing_potion itself. Does not end the turn.",
+  spawn_enemies:
+    "Brings new enemies into the game when the story needs them: an ambush, reinforcements, a monster " +
+    "behind a door. Not for creatures already in the game state. Enemy data has no id and no hit points: " +
+    "the engine assigns ids, hit points start at maxHp. An enemy attacks only with a weapon from its " +
+    "inventory (item data as in give_items). Keep the fight fair for the characters. In combat new enemies " +
+    "join at the end of the turn order; outside combat start_combat when the fight begins.",
 } satisfies Record<ToolName, string>
 
 export const toolDefinitions: ToolDefinition[] = Object.keys(ToolArgsSchemas).map((tool) => {
   const toolName = tool as ToolName
   // "$schema" is a URL the model does not need: about 60 characters per tool in every request
-  const { $schema: _, ...argsSchema } = z.toJSONSchema(ToolArgsSchemas[toolName])
+  // io "input": the model writes the arguments, so fields with a default are optional for it
+  const { $schema: _, ...argsSchema } = z.toJSONSchema(ToolArgsSchemas[toolName], { io: "input" })
   return {
     name: toolName,
     description: ToolDescriptions[toolName],

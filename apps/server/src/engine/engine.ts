@@ -31,6 +31,8 @@ import {
   GiveItemsArgs,
   ItemSummary,
   Item,
+  SpawnEnemiesArgs,
+  EnemySummary,
 } from "@dnd/shared"
 
 // Random number generator in [0, 1). Math.random in the game, replaced in tests.
@@ -97,16 +99,17 @@ function rollDice(diceInfo: Dice, rng: Rng): RollDiceResult {
   return { rolls, amount }
 }
 
-function generateItemId(state: GameState, extraIdsNotToUse?: Set<string>): string {
+function transformEnemyToEventFormat(enemies: Enemy[]): EnemySummary[] {
+  return enemies.map((e) => ({ id: e.id, name: e.name }))
+}
+
+function generateEntityId(prefix: string, extraIdsNotToUse?: Set<string>): string {
   let i = 1
-  let newId: string = `item-${i}`
-  const currentIds = new Set(getItemsIdsFromState(state))
-
-  while (currentIds.has(newId) || extraIdsNotToUse?.has(newId)) {
+  let newId: string = `${prefix}-${i}`
+  while (extraIdsNotToUse?.has(newId)) {
     i++
-    newId = `item-${i}`
+    newId = `${prefix}-${i}`
   }
-
   return newId
 }
 
@@ -131,9 +134,7 @@ function findItemsAndMoneyToTakeAndUpdateTarget(
 }
 
 function transformItemsToEventFormat(items: Item[]): ItemSummary[] {
-  return items.map((i) => {
-    return { id: i.id, name: i.name }
-  })
+  return items.map((i) => ({ id: i.id, name: i.name }))
 }
 
 function changeCreatureInState(state: GameState, creature: Character | Enemy): GameState {
@@ -903,9 +904,13 @@ export function giveItems(state: GameState, args: GiveItemsArgs): ReturnResult<"
     return { isOk: false, errorText: `No items or money to give` }
 
   const itemsGiven: Item[] = []
+  const takenItemsIdsInState = getItemsIdsFromState(state)
 
   for (let i = 0; i < args.items.length; i++) {
-    const newId = generateItemId(state, new Set(itemsGiven.map((item) => item.id)))
+    const newId = generateEntityId(
+      "item",
+      new Set([...takenItemsIdsInState, ...itemsGiven.map((item) => item.id)]),
+    )
     itemsGiven.push({ ...args.items[i], id: newId })
   }
 
@@ -923,5 +928,49 @@ export function giveItems(state: GameState, args: GiveItemsArgs): ReturnResult<"
       moneyGiven: args.moneyToGive,
     },
     state: nextState,
+  }
+}
+
+export function spawnEnemies(
+  state: GameState,
+  args: SpawnEnemiesArgs,
+): ReturnResult<"spawn_enemies"> {
+  if (args.enemies.length === 0) return { isOk: false, errorText: "No enemies to spawn" }
+
+  const newEnemies: Enemy[] = []
+  const newTakenItemIds: string[] = []
+  const itemIdsFromState: string[] = getItemsIdsFromState(state)
+  const takenCreaturesIdsInState: string[] = [
+    ...state.enemies.map((e) => e.id),
+    ...state.players.map((p) => p.id),
+  ]
+
+  for (let i = 0; i < args.enemies.length; i++) {
+    const takenIds = new Set([...newEnemies.map((e) => e.id), ...takenCreaturesIdsInState])
+    const newEnemyId = generateEntityId("enemy", takenIds)
+    const inventoryWithIds = args.enemies[i].inventory.map((item) => {
+      const newItemId = generateEntityId("item", new Set([...newTakenItemIds, ...itemIdsFromState]))
+      newTakenItemIds.push(newItemId)
+      return { ...item, id: newItemId }
+    })
+    newEnemies.push({
+      ...args.enemies[i],
+      id: newEnemyId,
+      hp: args.enemies[i].maxHp,
+      inventory: inventoryWithIds,
+    })
+  }
+
+  const combat: Combat | null = state.combat
+    ? { ...state.combat, order: [...state.combat.order, ...newEnemies.map((e) => e.id)] }
+    : null
+  const newState: GameState = { ...state, combat, enemies: [...state.enemies, ...newEnemies] }
+  return {
+    isOk: true,
+    event: {
+      enemies: transformEnemyToEventFormat(newEnemies),
+      hasEnteredCombat: !!newState.combat,
+    },
+    state: newState,
   }
 }

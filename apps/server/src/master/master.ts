@@ -10,6 +10,7 @@ import {
   endTurn,
   giveItems,
   rollCheck,
+  spawnEnemies,
   startCombat,
   transferItems,
 } from "../engine/engine"
@@ -308,6 +309,28 @@ export function executeTools(tools: ToolCall[], gameState: GameState, rng: Rng):
           tool: "give_items",
           args: giveItemsArgs.data,
           event: giveItemsResult.event,
+        })
+        break
+      }
+      case "spawn_enemies": {
+        const spawnEnemiesArgs = ToolArgsSchemas.spawn_enemies.safeParse(call.args)
+        if (!spawnEnemiesArgs.success) {
+          fail(call.name, z.prettifyError(spawnEnemiesArgs.error))
+          continue
+        }
+
+        const spawnEnemyResult = spawnEnemies(draft, spawnEnemiesArgs.data)
+        if (!spawnEnemyResult.isOk) {
+          fail(call.name, spawnEnemyResult.errorText)
+          continue
+        }
+
+        draft = spawnEnemyResult.state
+        results.push({
+          isOk: true,
+          tool: "spawn_enemies",
+          args: spawnEnemiesArgs.data,
+          event: spawnEnemyResult.event,
         })
         break
       }

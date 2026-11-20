@@ -24,7 +24,6 @@ const state = GameStateSchema.parse({
           kind: "weapon",
           id: "dagger",
           name: "Кинжал",
-          quantity: 1,
           attackBonus: 5,
           damage: { diceCount: 1, diceSides: 4, bonus: 3 },
         },
@@ -157,7 +156,6 @@ test("apply_healing_potion call is executed by the engine and recorded", () => {
     kind: "healing_potion" as const,
     id: "potion",
     name: "Зелье лечения",
-    quantity: 1 as const,
     healing: { diceCount: 1, diceSides: 4 as const, bonus: 0 },
   }
   const player = state.players[0]
@@ -225,7 +223,6 @@ test("give_items call drops an id sent by the model, the engine assigns its own"
     kind: "other",
     id: "dagger",
     name: "Верёвка",
-    quantity: 1,
     description: "Пятьдесят футов",
   }
   const r = executeTools(
@@ -246,13 +243,48 @@ test("give_items call drops an id sent by the model, the engine assigns its own"
 
 test("give_items with an item that does not fit its kind returns a failed result", () => {
   // a weapon without damage dice
-  const sword = { kind: "weapon", name: "Меч", quantity: 1, attackBonus: 5 }
+  const sword = { kind: "weapon", name: "Меч", attackBonus: 5 }
   const r = executeTools(
     [{ name: "give_items", args: { targetId: "p1", items: [sword] } }],
     state,
     fixed(0.5),
   )
   failureText(r.results[0], "give_items")
+  assert.equal(r.state, state)
+})
+
+test("spawn_enemies call is executed by the engine and recorded with default args", () => {
+  // no inventory in the call, the schema fills in an empty one
+  const wolf = {
+    name: "Волк",
+    maxHp: 11,
+    money: 0,
+    armorClass: 13,
+    initiativeModifier: 2,
+    skills: {},
+  }
+  const r = executeTools([{ name: "spawn_enemies", args: { enemies: [wolf] } }], state, fixed(0.5))
+  const rec = r.results[0]
+  assert.ok(rec.isOk && rec.tool === "spawn_enemies")
+  assert.deepEqual(rec.args, { enemies: [{ ...wolf, inventory: [] }] })
+  assert.deepEqual(rec.event, {
+    enemies: [{ id: "enemy-1", name: "Волк" }],
+    hasEnteredCombat: false,
+  })
+  assert.equal(r.state.enemies.at(-1)?.hp, 11)
+})
+
+test("spawn_enemies with numbers out of bounds returns a failed result", () => {
+  const giant = {
+    name: "Великан",
+    maxHp: 5000,
+    money: 0,
+    armorClass: 30,
+    initiativeModifier: 0,
+    skills: {},
+  }
+  const r = executeTools([{ name: "spawn_enemies", args: { enemies: [giant] } }], state, fixed(0.5))
+  failureText(r.results[0], "spawn_enemies")
   assert.equal(r.state, state)
 })
 
@@ -345,7 +377,6 @@ const scimitar = {
   kind: "weapon" as const,
   id: "scimitar",
   name: "Скимитар",
-  quantity: 1 as const,
   attackBonus: 4,
   damage: { diceCount: 1, diceSides: 6 as const, bonus: 2 },
 }
@@ -741,6 +772,7 @@ test("handleMessage: model is offered every tool", async () => {
     "end_turn",
     "give_items",
     "roll_check",
+    "spawn_enemies",
     "start_combat",
     "transfer_items",
   ])

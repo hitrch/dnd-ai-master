@@ -163,6 +163,46 @@ test("toModelError: other statuses are not retryable", () => {
   }
 })
 
+// The body Groq sends when the model's tool call does not match the schema (seen live 2026-11-20)
+const toolUseFailedBody = {
+  error: {
+    message: "Tool call validation failed: parameters for tool spawn_enemies did not match schema",
+    type: "invalid_request_error",
+    code: "tool_use_failed",
+    failed_generation: '{"name": "spawn_enemies", "arguments": {}}',
+  },
+}
+
+test("toModelError: 400 tool_use_failed is retryable, the model may call the tool right next time", () => {
+  const apiError = APIError.generate(400, toolUseFailedBody, undefined, new Headers())
+  const e = translateToModelError(apiError)
+  assert.equal(e.isRetryable, true)
+  assert.equal(e.cause, apiError)
+})
+
+test("toModelError: other 400 codes and odd bodies stay not retryable and do not throw", () => {
+  const bodies: [string, unknown][] = [
+    ["another code", { error: { ...toolUseFailedBody.error, code: "context_length_exceeded" } }],
+    ["no code", { error: { message: "bad request" } }],
+    ["inner error is a string", { error: "tool_use_failed" }],
+    ["code at the top level", { code: "tool_use_failed" }],
+    ["body is a string", "tool_use_failed"],
+    ["inner error is null", { error: null }],
+    ["no body", undefined],
+  ]
+  for (const [name, body] of bodies) {
+    const apiError = APIError.generate(400, body as object | undefined, undefined, new Headers())
+    assert.equal(translateToModelError(apiError).isRetryable, false, name)
+  }
+})
+
+test("toModelError: tool_use_failed with another status is judged by the status", () => {
+  for (const status of [401, 404, 422]) {
+    const apiError = APIError.generate(status, toolUseFailedBody, undefined, new Headers())
+    assert.equal(translateToModelError(apiError).isRetryable, false, `status ${status}`)
+  }
+})
+
 test("toModelError: a timeout is retryable", () => {
   const timeout = new APIConnectionTimeoutError()
   const e = translateToModelError(timeout)

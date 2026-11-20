@@ -7,13 +7,8 @@ export const DiceSchema = z.object({
 })
 export type Dice = z.infer<typeof DiceSchema>
 
-const BaseItemSchema = z.object({
-  name: z.string(),
-  quantity: z.literal(1),
-})
-
 export const OtherItemWithoutIdSchema = z.object({
-  ...BaseItemSchema.shape,
+  name: z.string(),
   kind: z.literal("other"),
   description: z.string(),
 })
@@ -26,7 +21,7 @@ export const OtherItemSchema = z.object({
 export type OtherItem = z.infer<typeof OtherItemSchema>
 
 export const HealingPotionWithoutIdSchema = z.object({
-  ...BaseItemSchema.shape,
+  name: z.string(),
   kind: z.literal("healing_potion"),
   healing: DiceSchema,
 })
@@ -39,7 +34,7 @@ export const HealingPotionSchema = z.object({
 export type HealingPotion = z.infer<typeof HealingPotionSchema>
 
 export const WeaponWithoutIdSchema = z.object({
-  ...BaseItemSchema.shape,
+  name: z.string(),
   kind: z.literal("weapon"),
   attackBonus: z.number().int().min(0).max(10),
   damage: DiceSchema,
@@ -70,13 +65,13 @@ const CreatureSchema = z.object({
   id: z.string(),
   name: z.string(),
   hp: z.number().int(),
-  maxHp: z.number().int().positive(),
+  maxHp: z.number().int().positive().max(200),
   money: z.number().int().min(0),
-  armorClass: z.number().int().positive(),
+  armorClass: z.number().int().positive().max(25),
   inventory: z.array(ItemSchema),
   initiativeModifier: z.number().int().min(-5).max(10),
   // key - skill name, value - modifier
-  skills: z.record(z.string(), z.number().int()),
+  skills: z.record(z.string(), z.number().int().min(-5).max(15)),
 })
 export type Creature = z.infer<typeof CreatureSchema>
 

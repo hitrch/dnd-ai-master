@@ -9,6 +9,14 @@ import type {
 import { ModelError } from "../modelError"
 import { isArrayNotEmpty, isPlainObject } from "../../utils"
 
+function isToolUseFailed(error: unknown): boolean {
+  return (
+    error instanceof APIError &&
+    error.status === 400 &&
+    error?.error?.error?.code === "tool_use_failed"
+  )
+}
+
 export function translateToolDefinitionsToTools(
   toolDefinitions: ToolDefinition[],
 ): ChatCompletionTool[] {
@@ -36,7 +44,8 @@ export function translateToModelError(arg: unknown): ModelError {
   if (arg instanceof APIError) {
     // No status means the request never got an answer: a connection failure or a timeout
     // (APIConnectionError, APIConnectionTimeoutError), both transient
-    const isRetryable = !arg.status || arg.status === 429 || arg.status >= 500
+    const isRetryable =
+      !arg.status || arg.status === 429 || arg.status >= 500 || isToolUseFailed(arg)
     const retryAfterMs = parseRetryAfterMs(arg.headers)
     return new ModelError(arg.message, isRetryable, { cause: arg, retryAfterMs })
   }
