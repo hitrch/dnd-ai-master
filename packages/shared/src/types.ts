@@ -4,8 +4,10 @@ import {
   ApplyHealingPotionArgs,
   AttackArgs,
   DeathSaveArgs,
+  DeleteItemsArgs,
   EndCombatArgs,
   EndTurnArgs,
+  GiveItemsArgs,
   RollCheckArgs,
   StartCombatArgs,
   TransferItemsArgs,
@@ -54,10 +56,33 @@ export type ToolMap = {
     event: TransferItemsEvent
     args: TransferItemsArgs
   }
+  delete_items: {
+    event: DeleteItemsEvent
+    args: DeleteItemsArgs
+  }
+  give_items: {
+    event: GiveItemsEvent
+    args: GiveItemsArgs
+  }
 }
 export type ToolName = keyof ToolMap
 
-export type TransferredItem = {
+export type GiveItemsEvent = {
+  targetId: string
+  targetName: string
+  itemsGiven: ItemSummary[]
+  moneyGiven: number
+}
+
+export type DeleteItemsEvent = {
+  targetId: string
+  targetName: string
+  deletedItems: ItemSummary[]
+  notFoundIds: string[]
+  moneyTaken: number
+}
+
+export type ItemSummary = {
   id: string
   name: string
 }
@@ -67,7 +92,7 @@ export type TransferItemsEvent = {
   sourceName: string
   targetId: string
   targetName: string
-  itemsTransferred: TransferredItem[]
+  itemsTransferred: ItemSummary[]
   moneyTransferred: number
   notFoundIds: string[]
 }

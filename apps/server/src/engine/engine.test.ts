@@ -13,6 +13,8 @@ import {
   endCombat,
   endTurn,
   transferItems,
+  deleteItems,
+  giveItems,
 } from "./engine"
 
 const state = GameStateSchema.parse({
@@ -1961,4 +1963,243 @@ test("other item schema: needs a description and is one item", () => {
     false,
   )
   assert.equal(GameStateSchema.safeParse(make({ ...key, id: "key-2", quantity: 2 })).success, false)
+})
+
+// ---------- item deletion ----------
+
+test("delete: removes the found items and coins, fills the event, the original is untouched", () => {
+  const r = deleteItems(looting, { targetId: "p1", itemIds: ["potion"], moneyToTake: 4 })
+  assert.ok(r.isOk)
+  assert.deepEqual(r.event, {
+    targetId: "p1",
+    targetName: "Арвен",
+    deletedItems: [{ id: "potion", name: "Зелье лечения" }],
+    notFoundIds: [],
+    moneyTaken: 4,
+  })
+  const [p1, p2] = r.state.players
+  assert.deepEqual(p1.inventory, [dagger])
+  assert.equal(p1.money, 6)
+  // nobody else is touched
+  assert.deepEqual(p2, looting.players[1])
+  assert.deepEqual(r.state.enemies, looting.enemies)
+  assert.equal(looting.players[0].inventory.length, 2)
+  assert.equal(looting.players[0].money, 10)
+})
+
+test("delete: unknown ids are reported, the found items are still removed", () => {
+  // the axe exists, but with someone else
+  const r = deleteItems(looting, {
+    targetId: "p1",
+    itemIds: ["bow", "dagger", "axe"],
+    moneyToTake: 0,
+  })
+  assert.ok(r.isOk)
+  assert.deepEqual(r.event.deletedItems, [{ id: "dagger", name: "Кинжал" }])
+  assert.deepEqual(r.event.notFoundIds, ["bow", "axe"])
+  assert.deepEqual(r.state.players[0].inventory, [potionItem])
+  assert.deepEqual(r.state.players[1].inventory, [axe])
+})
+
+test("delete: no more coins than the creature has", () => {
+  const r = deleteItems(looting, { targetId: "e1", itemIds: [], moneyToTake: 100 })
+  assert.ok(r.isOk)
+  assert.equal(r.event.moneyTaken, 3)
+  assert.equal(r.state.enemies[0].money, 0)
+  assert.deepEqual(r.event.deletedItems, [])
+})
+
+test("delete: works on a dead creature and in combat on anyone's turn, the turn stays", () => {
+  const fromBody = deleteItems(deadGoblin, { targetId: "e1", itemIds: ["key"], moneyToTake: 0 })
+  assert.ok(fromBody.isOk)
+  assert.deepEqual(fromBody.state.enemies[0].inventory, [scimitar])
+
+  const s = inCombat(["p1", "e1", "p2"], "e1", looting)
+  const r = deleteItems(s, { targetId: "p1", itemIds: ["dagger"], moneyToTake: 0 })
+  assert.ok(r.isOk)
+  assert.deepEqual(r.state.combat, s.combat)
+})
+
+test("delete: refusals change nothing", () => {
+  const take = { targetId: "p1", itemIds: ["dagger"], moneyToTake: 0 }
+  const cases: [string, GameState, typeof take][] = [
+    ["unknown creature", looting, { ...take, targetId: "nobody" }],
+    ["no item found and no coins", looting, { ...take, itemIds: ["bow"] }],
+    ["nothing asked", looting, { ...take, itemIds: [] }],
+    [
+      "coins asked, none to take",
+      lootingWith("p1", { money: 0 }),
+      { ...take, itemIds: [], moneyToTake: 5 },
+    ],
+  ]
+  for (const [name, s, args] of cases) {
+    const r = deleteItems(s, args)
+    assert.equal(r.isOk, false, name)
+    assert.ok(!r.isOk && r.errorText.length > 0, name)
+  }
+})
+
+test("delete args schema: no items and no coins by default, coins are a non-negative integer", () => {
+  const schema = ToolArgsSchemas.delete_items
+  const parsed = schema.parse({ targetId: "p1" })
+  assert.deepEqual(parsed.itemIds, [])
+  assert.equal(parsed.moneyToTake, 0)
+  assert.equal(schema.safeParse({ targetId: "p1", moneyToTake: -1 }).success, false)
+  assert.equal(schema.safeParse({ targetId: "p1", moneyToTake: 1.5 }).success, false)
+  assert.equal(schema.safeParse({ itemIds: ["dagger"] }).success, false)
+})
+
+// ---------- item giving ----------
+
+// Item data as the model sends it: no id
+const rope = {
+  kind: "other" as const,
+  name: "Верёвка",
+  quantity: 1 as const,
+  description: "50 футов",
+}
+const shortsword = {
+  kind: "weapon" as const,
+  name: "Короткий меч",
+  quantity: 1 as const,
+  attackBonus: 5,
+  damage: { diceCount: 1, diceSides: 6 as const, bonus: 3 },
+}
+const smallPotion = {
+  kind: "healing_potion" as const,
+  name: "Малое зелье",
+  quantity: 1 as const,
+  healing: { diceCount: 2, diceSides: 4 as const, bonus: 2 },
+}
+
+test("give: new items get engine ids and land at the end of the inventory, coins are added", () => {
+  const r = giveItems(looting, { targetId: "p2", items: [rope, shortsword], moneyToGive: 5 })
+  assert.ok(r.isOk)
+  assert.deepEqual(r.event, {
+    targetId: "p2",
+    targetName: "Борин",
+    itemsGiven: [
+      { id: "item-1", name: "Верёвка" },
+      { id: "item-2", name: "Короткий меч" },
+    ],
+    moneyGiven: 5,
+  })
+  const p2 = r.state.players[1]
+  assert.deepEqual(p2.inventory, [axe, { ...rope, id: "item-1" }, { ...shortsword, id: "item-2" }])
+  assert.equal(p2.money, 9)
+  assert.equal(GameStateSchema.safeParse(r.state).success, true)
+  // the original state is untouched
+  assert.deepEqual(looting.players[1].inventory, [axe])
+  assert.equal(looting.players[1].money, 4)
+})
+
+test("give: ids already taken anywhere in the state are skipped", () => {
+  // item-1 is with the goblin, item-3 with Арвен: the new items get item-2 and item-4
+  const taken = GameStateSchema.parse({
+    ...looting,
+    players: looting.players.map((p) =>
+      p.id === "p1" ? { ...p, inventory: [...p.inventory, { ...rope, id: "item-3" }] } : p,
+    ),
+    enemies: looting.enemies.map((e) => ({
+      ...e,
+      inventory: [...e.inventory, { ...rope, id: "item-1" }],
+    })),
+  })
+  const r = giveItems(taken, { targetId: "p2", items: [smallPotion, rope], moneyToGive: 0 })
+  assert.ok(r.isOk)
+  assert.deepEqual(
+    r.event.itemsGiven.map((i) => i.id),
+    ["item-2", "item-4"],
+  )
+  assert.equal(GameStateSchema.safeParse(r.state).success, true)
+})
+
+test("give: the same item data twice makes two separate items", () => {
+  const r = giveItems(looting, {
+    targetId: "p1",
+    items: [smallPotion, smallPotion],
+    moneyToGive: 0,
+  })
+  assert.ok(r.isOk)
+  assert.deepEqual(
+    r.state.players[0].inventory.map((i) => i.id),
+    ["dagger", "potion", "item-1", "item-2"],
+  )
+})
+
+test("give: ids are predictable, the same call gives the same ids", () => {
+  const args = { targetId: "p1", items: [rope], moneyToGive: 0 }
+  const a = giveItems(looting, args)
+  const b = giveItems(looting, args)
+  assert.ok(a.isOk && b.isOk)
+  assert.deepEqual(a.event, b.event)
+})
+
+test("give: a given weapon can be used to attack right away", () => {
+  const r = giveItems(looting, { targetId: "p1", items: [shortsword], moneyToGive: 0 })
+  assert.ok(r.isOk)
+  const hit = attack(r.state, { attackerId: "p1", weaponId: "item-1", targetId: "e1" }, fixed(0.5))
+  assert.ok(hit.isOk)
+  assert.equal(hit.event.weaponName, "Короткий меч")
+})
+
+test("give: coins only, an enemy, a down character, in combat on anyone's turn", () => {
+  const coins = giveItems(looting, { targetId: "e1", items: [], moneyToGive: 2 })
+  assert.ok(coins.isOk)
+  assert.equal(coins.state.enemies[0].money, 5)
+  assert.deepEqual(coins.event.itemsGiven, [])
+
+  const down = giveItems(lootingWith("p1", { hp: 0 }), {
+    targetId: "p1",
+    items: [rope],
+    moneyToGive: 0,
+  })
+  assert.ok(down.isOk)
+
+  const s = inCombat(["p1", "e1", "p2"], "e1", looting)
+  const r = giveItems(s, { targetId: "p1", items: [rope], moneyToGive: 0 })
+  assert.ok(r.isOk)
+  assert.deepEqual(r.state.combat, s.combat)
+})
+
+test("give: refusals change nothing", () => {
+  const give = { targetId: "p2", items: [rope], moneyToGive: 0 }
+  const cases: [string, GameState, typeof give][] = [
+    ["unknown receiver", looting, { ...give, targetId: "ghost" }],
+    ["dead character receives", lootingWith("p2", { hp: 0, saveRollFails: 3 }), give],
+    ["enemy at 0 HP receives", deadGoblin, { ...give, targetId: "e1" }],
+    ["nothing to give", looting, { ...give, items: [] }],
+  ]
+  for (const [name, s, args] of cases) {
+    const r = giveItems(s, args)
+    assert.equal(r.isOk, false, name)
+    assert.ok(!r.isOk && r.errorText.length > 0, name)
+  }
+})
+
+test("give args schema: items without ids, every kind keeps its own fields", () => {
+  const schema = ToolArgsSchemas.give_items
+  const parsed = schema.parse({ targetId: "p1" })
+  assert.deepEqual(parsed.items, [])
+  assert.equal(parsed.moneyToGive, 0)
+  const all = schema.safeParse({ targetId: "p1", items: [rope, shortsword, smallPotion] })
+  assert.equal(all.success, true)
+  // an id from the model is dropped, not kept
+  const withId = schema.parse({ targetId: "p1", items: [{ ...rope, id: "dagger" }] })
+  assert.equal(Object.hasOwn(withId.items[0], "id"), false)
+  const bad: [string, unknown][] = [
+    ["weapon without damage", { ...shortsword, damage: undefined }],
+    ["potion without healing", { ...smallPotion, healing: undefined }],
+    ["other item without description", { ...rope, description: undefined }],
+    [
+      "damage dice out of range",
+      { ...shortsword, damage: { diceCount: 20, diceSides: 6, bonus: 0 } },
+    ],
+    ["two of one item", { ...rope, quantity: 2 }],
+    ["unknown kind", { ...rope, kind: "armor" }],
+  ]
+  for (const [name, item] of bad) {
+    assert.equal(schema.safeParse({ targetId: "p1", items: [item] }).success, false, name)
+  }
+  assert.equal(schema.safeParse({ targetId: "p1", moneyToGive: -1 }).success, false)
 })

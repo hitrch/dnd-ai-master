@@ -8,32 +8,56 @@ export const DiceSchema = z.object({
 export type Dice = z.infer<typeof DiceSchema>
 
 const BaseItemSchema = z.object({
-  id: z.string(),
   name: z.string(),
   quantity: z.literal(1),
 })
 
-export const OtherItemSchema = z.object({
+export const OtherItemWithoutIdSchema = z.object({
   ...BaseItemSchema.shape,
   kind: z.literal("other"),
   description: z.string(),
 })
+export type OtherItemWithoutId = z.infer<typeof OtherItemWithoutIdSchema>
+
+export const OtherItemSchema = z.object({
+  ...OtherItemWithoutIdSchema.shape,
+  id: z.string(),
+})
 export type OtherItem = z.infer<typeof OtherItemSchema>
 
-export const HealingPotionSchema = z.object({
+export const HealingPotionWithoutIdSchema = z.object({
   ...BaseItemSchema.shape,
   kind: z.literal("healing_potion"),
   healing: DiceSchema,
 })
+export type HealingPotionWithoutId = z.infer<typeof HealingPotionWithoutIdSchema>
+
+export const HealingPotionSchema = z.object({
+  ...HealingPotionWithoutIdSchema.shape,
+  id: z.string(),
+})
 export type HealingPotion = z.infer<typeof HealingPotionSchema>
 
-export const WeaponSchema = z.object({
+export const WeaponWithoutIdSchema = z.object({
   ...BaseItemSchema.shape,
   kind: z.literal("weapon"),
   attackBonus: z.number().int().min(0).max(10),
   damage: DiceSchema,
 })
+export type WeaponWithoutId = z.infer<typeof WeaponWithoutIdSchema>
+
+export const WeaponSchema = z.object({
+  ...WeaponWithoutIdSchema.shape,
+  id: z.string(),
+})
 export type Weapon = z.infer<typeof WeaponSchema>
+
+export const ItemWithoutIdSchema = z.discriminatedUnion("kind", [
+  HealingPotionWithoutIdSchema,
+  WeaponWithoutIdSchema,
+  OtherItemWithoutIdSchema,
+])
+export type ItemWithoutId = z.infer<typeof ItemWithoutIdSchema>
 
 export const ItemSchema = z.discriminatedUnion("kind", [
   HealingPotionSchema,
@@ -76,6 +100,10 @@ export const CombatSchema = z.object({
 })
 export type Combat = z.infer<typeof CombatSchema>
 
+export function getItemsIdsFromState(state: GameState): string[] {
+  return [...state.players, ...state.enemies].flatMap((c) => c.inventory).map((i) => i.id)
+}
+
 export const GameStateSchema = z
   .object({
     location: z.string(),
@@ -85,9 +113,7 @@ export const GameStateSchema = z
   })
   .refine(
     (data) => {
-      const creaturesItemsIds = [...data.players, ...data.enemies]
-        .flatMap((c) => c.inventory)
-        .map((i) => i.id)
+      const creaturesItemsIds = getItemsIdsFromState(data)
       const uniqueItemsIds = new Set(creaturesItemsIds)
       return uniqueItemsIds.size === creaturesItemsIds.length
     },

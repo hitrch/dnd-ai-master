@@ -26,6 +26,10 @@ import {
   ApplyHealingPotionArgs,
   HealOutcome,
   TransferItemsArgs,
+  getItemsIdsFromState,
+  DeleteItemsArgs,
+  GiveItemsArgs,
+  ItemSummary,
   Item,
 } from "@dnd/shared"
 
@@ -39,6 +43,13 @@ type RollAndApplyDamageResult = {
 type RollAndApplyHealResult = {
   state: GameState
   event: HealEvent
+}
+
+type FindItemsAndMoneyToTakeAndUpdateTargetResult = {
+  updatedCreature: Character | Enemy
+  itemsTaken: Item[]
+  itemsNotFoundIds: string[]
+  moneyTaken: number
 }
 
 type TurnPassResult =
@@ -84,6 +95,45 @@ function rollDice(diceInfo: Dice, rng: Rng): RollDiceResult {
     amount += roll
   }
   return { rolls, amount }
+}
+
+function generateItemId(state: GameState, extraIdsNotToUse?: Set<string>): string {
+  let i = 1
+  let newId: string = `item-${i}`
+  const currentIds = new Set(getItemsIdsFromState(state))
+
+  while (currentIds.has(newId) || extraIdsNotToUse?.has(newId)) {
+    i++
+    newId = `item-${i}`
+  }
+
+  return newId
+}
+
+function findItemsAndMoneyToTakeAndUpdateTarget(
+  creatureToTakeFrom: Character | Enemy,
+  itemsToTransferIds: string[],
+  moneyToTake: number,
+): FindItemsAndMoneyToTakeAndUpdateTargetResult {
+  const targetItemsIdsSet = new Set(creatureToTakeFrom.inventory.map((i) => i.id))
+  const itemsTaken: Item[] = creatureToTakeFrom.inventory.filter((item) =>
+    itemsToTransferIds.includes(item.id),
+  )
+  const itemsNotFoundIds = itemsToTransferIds.filter((id) => !targetItemsIdsSet.has(id))
+  const moneySubtracted = Math.min(creatureToTakeFrom.money, moneyToTake)
+  const itemsToTransferIdSet = new Set(itemsTaken.map((i) => i.id))
+  const updatedCreature = {
+    ...creatureToTakeFrom,
+    money: creatureToTakeFrom.money - moneySubtracted,
+    inventory: creatureToTakeFrom.inventory.filter((item) => !itemsToTransferIdSet.has(item.id)),
+  }
+  return { updatedCreature, itemsTaken, itemsNotFoundIds, moneyTaken: moneySubtracted }
+}
+
+function transformItemsToEventFormat(items: Item[]): ItemSummary[] {
+  return items.map((i) => {
+    return { id: i.id, name: i.name }
+  })
 }
 
 function changeCreatureInState(state: GameState, creature: Character | Enemy): GameState {
@@ -784,29 +834,20 @@ export function transferItems(
       errorText: `Creature with id ${giver.id} is not the one active in combat now`,
     }
 
-  const giverItemsIdsSet = new Set(giver.inventory.map((i) => i.id))
-  const itemsToTransfer = giver.inventory.filter((item) => args.itemIds.includes(item.id))
-  const itemsNotFoundIds = args.itemIds.filter((id) => !giverItemsIdsSet.has(id))
-  const moneyToTransfer = Math.min(giver.money, args.moneyToTransfer)
-
-  if (!moneyToTransfer && !itemsToTransfer.length)
-    return { isOk: false, errorText: `Nothing to transfer` }
+  const { updatedCreature, itemsTaken, itemsNotFoundIds, moneyTaken } =
+    findItemsAndMoneyToTakeAndUpdateTarget(giver, args.itemIds, args.moneyToTransfer)
+  if (!moneyTaken && itemsTaken.length === 0)
+    return {
+      isOk: false,
+      errorText: `No items or money to transfer`,
+    }
 
   const stateAfterReceiverUpdated = changeCreatureInState(state, {
     ...receiver,
-    money: receiver.money + moneyToTransfer,
-    inventory: [...receiver.inventory, ...itemsToTransfer],
+    money: receiver.money + moneyTaken,
+    inventory: [...receiver.inventory, ...itemsTaken],
   })
-  const itemsToTransferIdSet = new Set(itemsToTransfer.map(i => i.id))
-  const resultState = changeCreatureInState(stateAfterReceiverUpdated, {
-    ...giver,
-    money: giver.money - moneyToTransfer,
-    inventory: giver.inventory.filter((item) => !itemsToTransferIdSet.has(item.id)),
-  })
-
-  const itemsTransferredInEventFormat = itemsToTransfer.map((item) => {
-    return { id: item.id, name: item.name }
-  })
+  const resultState = changeCreatureInState(stateAfterReceiverUpdated, updatedCreature)
   return {
     isOk: true,
     event: {
@@ -814,10 +855,73 @@ export function transferItems(
       sourceName: giver.name,
       targetId: receiver.id,
       targetName: receiver.name,
-      itemsTransferred: itemsTransferredInEventFormat,
-      moneyTransferred: moneyToTransfer,
+      itemsTransferred: transformItemsToEventFormat(itemsTaken),
+      moneyTransferred: moneyTaken,
       notFoundIds: itemsNotFoundIds,
     },
     state: resultState,
+  }
+}
+
+export function deleteItems(state: GameState, args: DeleteItemsArgs): ReturnResult<"delete_items"> {
+  const target = findCreatureById(state, args.targetId)
+  if (!target)
+    return { isOk: false, errorText: `No target for expropriation with id ${args.targetId} found` }
+
+  const { updatedCreature, itemsTaken, itemsNotFoundIds, moneyTaken } =
+    findItemsAndMoneyToTakeAndUpdateTarget(target, args.itemIds, args.moneyToTake)
+  if (!moneyTaken && itemsTaken.length === 0)
+    return {
+      isOk: false,
+      errorText: `No items or money to delete`,
+    }
+
+  const nextState = changeCreatureInState(state, updatedCreature)
+  return {
+    isOk: true,
+    event: {
+      targetId: updatedCreature.id,
+      targetName: updatedCreature.name,
+      deletedItems: transformItemsToEventFormat(itemsTaken),
+      notFoundIds: itemsNotFoundIds,
+      moneyTaken: moneyTaken,
+    },
+    state: nextState,
+  }
+}
+
+export function giveItems(state: GameState, args: GiveItemsArgs): ReturnResult<"give_items"> {
+  const target = findCreatureById(state, args.targetId)
+  if (!target)
+    return {
+      isOk: false,
+      errorText: `No target for enriching with items with id ${args.targetId} found`,
+    }
+  const targetError = getTargetError(target)
+  if (targetError) return { isOk: false, errorText: targetError }
+  if (!args.moneyToGive && args.items.length === 0)
+    return { isOk: false, errorText: `No items or money to give` }
+
+  const itemsGiven: Item[] = []
+
+  for (let i = 0; i < args.items.length; i++) {
+    const newId = generateItemId(state, new Set(itemsGiven.map((item) => item.id)))
+    itemsGiven.push({ ...args.items[i], id: newId })
+  }
+
+  const nextState = changeCreatureInState(state, {
+    ...target,
+    money: target.money + args.moneyToGive,
+    inventory: [...target.inventory, ...itemsGiven],
+  })
+  return {
+    isOk: true,
+    event: {
+      targetId: target.id,
+      targetName: target.name,
+      itemsGiven: transformItemsToEventFormat(itemsGiven),
+      moneyGiven: args.moneyToGive,
+    },
+    state: nextState,
   }
 }

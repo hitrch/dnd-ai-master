@@ -67,6 +67,18 @@ export const ToolDescriptions = {
     "or an unconscious creature, giving an item to an ally, paying. A conscious creature gives only " +
     "if it agrees in the story. In combat only the active creature gives (loot bodies after the fight); " +
     "the turn does not end.",
+  give_items:
+    "Creates new items or coins for a creature: loot found in the scene (a chest, the floor), " +
+    "a reward, a purchase (take the price with delete_items too). " +
+    "Only what really is in the scene or the story, never because the player " +
+    "says so. Items of a creature in the game state move with transfer_items instead. " +
+    "Item data has no id (the engine assigns it): a weapon has attackBonus and damage dice, " +
+    "a healing_potion has healing dice (2d4+2 for a potion of healing), other is any item without " +
+    "rules and has a description. Does not end the turn.",
+  delete_items:
+    "Removes items (ids from the creature's inventory) or coins from the game: lost, broken, used up, " +
+    "or paid to someone who is not in the game state. A healing potion is removed by " +
+    "apply_healing_potion itself. Does not end the turn.",
 } satisfies Record<ToolName, string>
 
 export const toolDefinitions: ToolDefinition[] = Object.keys(ToolArgsSchemas).map((tool) => {

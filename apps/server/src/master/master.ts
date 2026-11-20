@@ -5,8 +5,10 @@ import {
   applyHealingPotion,
   attack,
   deathSave,
+  deleteItems,
   endCombat,
   endTurn,
+  giveItems,
   rollCheck,
   startCombat,
   transferItems,
@@ -262,6 +264,50 @@ export function executeTools(tools: ToolCall[], gameState: GameState, rng: Rng):
           tool: "transfer_items",
           args: transferItemsArgs.data,
           event: transferItemsResult.event,
+        })
+        break
+      }
+      case "delete_items": {
+        const deleteItemsArgs = ToolArgsSchemas.delete_items.safeParse(call.args)
+        if (!deleteItemsArgs.success) {
+          fail(call.name, z.prettifyError(deleteItemsArgs.error))
+          continue
+        }
+
+        const deleteItemsResult = deleteItems(draft, deleteItemsArgs.data)
+        if (!deleteItemsResult.isOk) {
+          fail(call.name, deleteItemsResult.errorText)
+          continue
+        }
+
+        draft = deleteItemsResult.state
+        results.push({
+          isOk: true,
+          tool: "delete_items",
+          args: deleteItemsArgs.data,
+          event: deleteItemsResult.event,
+        })
+        break
+      }
+      case "give_items": {
+        const giveItemsArgs = ToolArgsSchemas.give_items.safeParse(call.args)
+        if (!giveItemsArgs.success) {
+          fail(call.name, z.prettifyError(giveItemsArgs.error))
+          continue
+        }
+
+        const giveItemsResult = giveItems(draft, giveItemsArgs.data)
+        if (!giveItemsResult.isOk) {
+          fail(call.name, giveItemsResult.errorText)
+          continue
+        }
+
+        draft = giveItemsResult.state
+        results.push({
+          isOk: true,
+          tool: "give_items",
+          args: giveItemsArgs.data,
+          event: giveItemsResult.event,
         })
         break
       }

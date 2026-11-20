@@ -202,6 +202,60 @@ test("transfer_items refused by the engine returns a failed result", () => {
   assert.equal(r.state, state)
 })
 
+test("delete_items call is executed by the engine and recorded with default args", () => {
+  // the dagger breaks; no coins in the call, the schema fills in 0
+  const args = { targetId: "p1", itemIds: ["dagger"] }
+  const r = executeTools([{ name: "delete_items", args }], state, fixed(0.5))
+  const rec = r.results[0]
+  assert.ok(rec.isOk && rec.tool === "delete_items")
+  assert.deepEqual(rec.args, { ...args, moneyToTake: 0 })
+  assert.deepEqual(rec.event.deletedItems, [{ id: "dagger", name: "Кинжал" }])
+  assert.deepEqual(r.state.players[0].inventory, [])
+})
+
+test("delete_items refused by the engine returns a failed result", () => {
+  const args = { targetId: "p1", itemIds: ["bow"] }
+  const r = executeTools([{ name: "delete_items", args }], state, fixed(0.5))
+  failureText(r.results[0], "delete_items")
+  assert.equal(r.state, state)
+})
+
+test("give_items call drops an id sent by the model, the engine assigns its own", () => {
+  const rope = {
+    kind: "other",
+    id: "dagger",
+    name: "Верёвка",
+    quantity: 1,
+    description: "Пятьдесят футов",
+  }
+  const r = executeTools(
+    [{ name: "give_items", args: { targetId: "p1", items: [rope] } }],
+    state,
+    fixed(0.5),
+  )
+  const rec = r.results[0]
+  assert.ok(rec.isOk && rec.tool === "give_items")
+  assert.deepEqual(rec.event.itemsGiven, [{ id: "item-1", name: "Верёвка" }])
+  assert.equal(rec.event.moneyGiven, 0)
+  assert.deepEqual(
+    r.state.players[0].inventory.map((i) => i.id),
+    ["dagger", "item-1"],
+  )
+  assert.equal(GameStateSchema.safeParse(r.state).success, true)
+})
+
+test("give_items with an item that does not fit its kind returns a failed result", () => {
+  // a weapon without damage dice
+  const sword = { kind: "weapon", name: "Меч", quantity: 1, attackBonus: 5 }
+  const r = executeTools(
+    [{ name: "give_items", args: { targetId: "p1", items: [sword] } }],
+    state,
+    fixed(0.5),
+  )
+  failureText(r.results[0], "give_items")
+  assert.equal(r.state, state)
+})
+
 test("start_combat call is executed by the engine and recorded", () => {
   // p1 11+3=14, e1 11+2=13
   const args = { participantIds: ["e1", "p1"] }
@@ -682,8 +736,10 @@ test("handleMessage: model is offered every tool", async () => {
     "apply_healing_potion",
     "attack",
     "death_save",
+    "delete_items",
     "end_combat",
     "end_turn",
+    "give_items",
     "roll_check",
     "start_combat",
     "transfer_items",

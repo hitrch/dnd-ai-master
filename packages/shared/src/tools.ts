@@ -1,7 +1,7 @@
 import { z } from "zod"
 import { SkillSchema } from "./skills"
 import type { ToolName } from "./types"
-import { DiceSchema } from "./state"
+import { DiceSchema, ItemWithoutIdSchema } from "./state"
 
 export const RollCheckArgsSchema = z.object({
   characterId: z.string(),
@@ -62,6 +62,20 @@ export const TransferItemsArgsSchema = z.object({
 })
 export type TransferItemsArgs = z.infer<typeof TransferItemsArgsSchema>
 
+export const DeleteItemsArgsSchema = z.object({
+  targetId: z.string(),
+  itemIds: z.array(z.string()).default([]),
+  moneyToTake: z.number().int().min(0).default(0),
+})
+export type DeleteItemsArgs = z.infer<typeof DeleteItemsArgsSchema>
+
+export const GiveItemsArgsSchema = z.object({
+  targetId: z.string(),
+  items: z.array(ItemWithoutIdSchema).default([]),
+  moneyToGive: z.number().int().min(0).default(0),
+})
+export type GiveItemsArgs = z.infer<typeof GiveItemsArgsSchema>
+
 export const ToolArgsSchemas = {
   roll_check: RollCheckArgsSchema,
   apply_damage: ApplyDamageArgsSchema,
@@ -73,4 +87,6 @@ export const ToolArgsSchemas = {
   end_turn: EndTurnArgsSchema,
   apply_healing_potion: ApplyHealingPotionArgsSchema,
   transfer_items: TransferItemsArgsSchema,
+  delete_items: DeleteItemsArgsSchema,
+  give_items: GiveItemsArgsSchema,
 } satisfies Record<ToolName, z.ZodType>
