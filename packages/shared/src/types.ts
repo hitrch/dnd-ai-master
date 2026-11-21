@@ -3,6 +3,7 @@ import {
   ApplyHealArgs,
   ApplyHealingPotionArgs,
   AttackArgs,
+  ChangeLocationArgs,
   DeathSaveArgs,
   DeleteItemsArgs,
   EndCombatArgs,
@@ -69,8 +70,18 @@ export type ToolMap = {
     event: SpawnEnemiesEvent
     args: SpawnEnemiesArgs
   }
+  change_location: {
+    event: ChangeLocationEvent
+    args: ChangeLocationArgs
+  }
 }
 export type ToolName = keyof ToolMap
+
+export type ChangeLocationEvent = {
+  previousLocationName: string
+  newLocationName: string
+  enemiesOfPreviousLocation: EnemySummary[]
+}
 
 export type EnemySummary = {
   id: string

@@ -33,6 +33,7 @@ import {
   Item,
   SpawnEnemiesArgs,
   EnemySummary,
+  ChangeLocationArgs,
 } from "@dnd/shared"
 
 // Random number generator in [0, 1). Math.random in the game, replaced in tests.
@@ -972,5 +973,31 @@ export function spawnEnemies(
       hasEnteredCombat: !!newState.combat,
     },
     state: newState,
+  }
+}
+
+export function changeLocation(
+  state: GameState,
+  args: ChangeLocationArgs,
+): ReturnResult<"change_location"> {
+  if (state.combat)
+    return {
+      isOk: false,
+      errorText:
+        '"Cannot change location during combat: end the combat first (end_combat if the characters escape or the enemies flee).',
+    }
+
+  return {
+    isOk: true,
+    event: {
+      previousLocationName: state.location.name,
+      newLocationName: args.name,
+      enemiesOfPreviousLocation: transformEnemyToEventFormat(state.enemies),
+    },
+    state: {
+      ...state,
+      location: args,
+      enemies: [],
+    },
   }
 }

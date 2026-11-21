@@ -4,6 +4,7 @@ import {
   applyHeal,
   applyHealingPotion,
   attack,
+  changeLocation,
   deathSave,
   deleteItems,
   endCombat,
@@ -331,6 +332,28 @@ export function executeTools(tools: ToolCall[], gameState: GameState, rng: Rng):
           tool: "spawn_enemies",
           args: spawnEnemiesArgs.data,
           event: spawnEnemyResult.event,
+        })
+        break
+      }
+      case "change_location": {
+        const changeLocationArgs = ToolArgsSchemas.change_location.safeParse(call.args)
+        if (!changeLocationArgs.success) {
+          fail(call.name, z.prettifyError(changeLocationArgs.error))
+          continue
+        }
+
+        const changeLocationResult = changeLocation(draft, changeLocationArgs.data)
+        if (!changeLocationResult.isOk) {
+          fail(call.name, changeLocationResult.errorText)
+          continue
+        }
+
+        draft = changeLocationResult.state
+        results.push({
+          isOk: true,
+          tool: "change_location",
+          args: changeLocationArgs.data,
+          event: changeLocationResult.event,
         })
         break
       }

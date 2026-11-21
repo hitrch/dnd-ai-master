@@ -1,5 +1,9 @@
 import { z } from "zod"
 
+export function getItemsIdsFromState(state: GameState): string[] {
+  return [...state.players, ...state.enemies].flatMap((c) => c.inventory).map((i) => i.id)
+}
+
 export const DiceSchema = z.object({
   diceCount: z.number().int().min(1).max(10),
   diceSides: z.literal([4, 6, 8, 10, 12, 20]),
@@ -95,13 +99,15 @@ export const CombatSchema = z.object({
 })
 export type Combat = z.infer<typeof CombatSchema>
 
-export function getItemsIdsFromState(state: GameState): string[] {
-  return [...state.players, ...state.enemies].flatMap((c) => c.inventory).map((i) => i.id)
-}
+export const LocationSchema = z.object({
+  name: z.string(),
+  description: z.string(),
+})
+export type LocationInfo = z.infer<typeof LocationSchema>
 
 export const GameStateSchema = z
   .object({
-    location: z.string(),
+    location: LocationSchema,
     players: z.array(CharacterSchema),
     enemies: z.array(EnemySchema),
     combat: CombatSchema.nullable(),

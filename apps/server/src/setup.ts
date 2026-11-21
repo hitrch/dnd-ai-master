@@ -67,7 +67,11 @@ export function createModel(options: { logging: boolean }): ModelProvider {
 // A small starting scene for manual checks and trial games
 export function createSampleState(): GameState {
   return GameStateSchema.parse({
-    location: "Подножие башни",
+    location: {
+      name: "Подножие башни",
+      description:
+        "Старая каменная башня на холме. Дубовая дверь у входа приоткрыта, вокруг мокрая трава и следы сапог.",
+    },
     players: [
       {
         id: "p1",

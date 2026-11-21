@@ -85,6 +85,11 @@ export const ToolDescriptions = {
     "the engine assigns ids, hit points start at maxHp. An enemy attacks only with a weapon from its " +
     "inventory (item data as in give_items). Keep the fight fair for the characters. In combat new enemies " +
     "join at the end of the turn order; outside combat start_combat when the fight begins.",
+  change_location:
+    "Moves the characters to a new place when the player's message takes them there now " +
+    "(a thought or a plan is not a move; a step inside the same place is not either). " +
+    "description: what the place looks like, not what the character does. " +
+    "All enemies of the old place stay behind (bodies too). Not in combat: end_combat first if they escape.",
 } satisfies Record<ToolName, string>
 
 export const toolDefinitions: ToolDefinition[] = Object.keys(ToolArgsSchemas).map((tool) => {

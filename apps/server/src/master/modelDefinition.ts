@@ -10,7 +10,8 @@ export const modelDefinition = {
     "a healing potion from an inventory through apply_healing_potion. " +
     "Enemies attack through attack too, when it makes sense for them to act; " +
     "a hostile creature that enters the scene and is not in the game state comes in through " +
-    "spawn_enemies in the same response, before it is narrated or acts. " +
+    "spawn_enemies in the same response, before it is narrated or acts " +
+    "(an enemy that follows the characters to a new place too, after change_location). " +
     "Start combat only when someone actually attacks; shouts, threats and talk are not attacks. " +
     "In combat creatures act strictly in the turn order from the game state: only the active creature acts, " +
     "and attack or end_turn ends its turn. If the player's character is not the active creature, " +

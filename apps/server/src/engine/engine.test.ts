@@ -16,10 +16,11 @@ import {
   deleteItems,
   giveItems,
   spawnEnemies,
+  changeLocation,
 } from "./engine"
 
 const state = GameStateSchema.parse({
-  location: "Подножие башни",
+  location: { name: "Подножие башни", description: "Каменная башня, у входа дубовая дверь." },
   players: [
     {
       id: "p1",
@@ -2371,4 +2372,92 @@ test("spawn args schema: no id or hp from the model, bounds on the numbers, at l
   for (const [name, enemy] of bad) {
     assert.equal(schema.safeParse({ enemies: [enemy] }).success, false, name)
   }
+})
+
+const hall = { name: "Зал башни", description: "Пыльный зал, винтовая лестница наверх." }
+
+test("change location: the place is replaced, every enemy stays behind, the event names both places", () => {
+  // a dead enemy and a living one: both are left in the old place
+  const s: GameState = {
+    ...state,
+    enemies: [
+      { ...state.enemies[0], hp: 0 },
+      { ...state.enemies[0], id: "e2", name: "Гоблин-лучник", inventory: [] },
+    ],
+  }
+  const r = changeLocation(s, hall)
+  assert.ok(r.isOk)
+  assert.deepEqual(r.event, {
+    previousLocationName: "Подножие башни",
+    newLocationName: "Зал башни",
+    enemiesOfPreviousLocation: [
+      { id: "e1", name: "Гоблин-часовой" },
+      { id: "e2", name: "Гоблин-лучник" },
+    ],
+  })
+  assert.deepEqual(r.state.location, hall)
+  assert.deepEqual(r.state.enemies, [])
+  assert.equal(r.state.combat, null)
+  assert.equal(GameStateSchema.safeParse(r.state).success, true)
+  // the original is untouched
+  assert.equal(s.location.name, "Подножие башни")
+  assert.equal(s.enemies.length, 2)
+})
+
+test("change location: the characters keep everything: hp, death saves, inventory, coins", () => {
+  const s: GameState = {
+    ...state,
+    players: [
+      { ...state.players[0], hp: 0, saveRollFails: 1, saveRollSuccesses: 2, money: 4 },
+      { ...state.players[0], id: "p2", name: "Борин", hp: 5, inventory: [] },
+    ],
+  }
+  const r = changeLocation(s, hall)
+  assert.ok(r.isOk)
+  assert.deepEqual(r.state.players, s.players)
+})
+
+test("change location: with no enemies the list in the event is empty", () => {
+  const r = changeLocation({ ...state, enemies: [] }, hall)
+  assert.ok(r.isOk)
+  assert.deepEqual(r.event.enemiesOfPreviousLocation, [])
+})
+
+test("change location: returning to a place by the same name is still a move", () => {
+  const r = changeLocation(state, { ...state.location })
+  assert.ok(r.isOk)
+  assert.deepEqual(r.state.enemies, [])
+})
+
+test("change location: refused in combat, nothing changes", () => {
+  const s: GameState = {
+    ...state,
+    combat: { order: ["p1", "e1"], round: 2, activeCreatureId: "p1" },
+  }
+  const r = changeLocation(s, hall)
+  assert.equal(r.isOk, false)
+  assert.equal(s.location.name, "Подножие башни")
+  assert.equal(s.enemies.length, 1)
+})
+
+test("change location: an enemy spawned in the new place gets the first free id again", () => {
+  const moved = changeLocation(state, hall)
+  assert.ok(moved.isOk)
+  const r = spawnEnemies(moved.state, { enemies: [wolf] })
+  assert.ok(r.isOk)
+  assert.deepEqual(
+    r.state.enemies.map((e) => e.id),
+    ["enemy-1"],
+  )
+})
+
+test("location schema: name and description are required strings, extra keys are dropped", () => {
+  const schema = ToolArgsSchemas.change_location
+  const parsed = schema.parse({ ...hall, id: "loc-1" })
+  assert.deepEqual(parsed, hall)
+  assert.equal(schema.safeParse({ name: "Зал башни" }).success, false)
+  assert.equal(schema.safeParse({ description: "Пыльный зал." }).success, false)
+  assert.equal(schema.safeParse({ name: 1, description: "Пыльный зал." }).success, false)
+  // the state uses the same location shape
+  assert.equal(GameStateSchema.safeParse({ ...state, location: "Подножие башни" }).success, false)
 })

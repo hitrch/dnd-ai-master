@@ -5,7 +5,7 @@ import { GameStateService } from "./gameStateService"
 
 const makeState = () =>
   GameStateSchema.parse({
-    location: "Подножие башни",
+    location: { name: "Подножие башни", description: "Каменная башня, у входа дубовая дверь." },
     players: [
       {
         id: "p1",

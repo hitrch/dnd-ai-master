@@ -10,7 +10,7 @@ import type { ModelProvider, ModelResponse, StoryMessage, ToolDefinition } from 
 import type { ActionStore, ToolResult } from "../types"
 
 const state = GameStateSchema.parse({
-  location: "Подножие башни",
+  location: { name: "Подножие башни", description: "Каменная башня, у входа дубовая дверь." },
   players: [
     {
       id: "p1",
@@ -286,6 +286,37 @@ test("spawn_enemies with numbers out of bounds returns a failed result", () => {
   const r = executeTools([{ name: "spawn_enemies", args: { enemies: [giant] } }], state, fixed(0.5))
   failureText(r.results[0], "spawn_enemies")
   assert.equal(r.state, state)
+})
+
+test("change_location call is executed by the engine and recorded", () => {
+  const args = { name: "Зал башни", description: "Пыльный зал, винтовая лестница наверх." }
+  const r = executeTools([{ name: "change_location", args }], state, fixed(0.5))
+  const rec = r.results[0]
+  assert.ok(rec.isOk && rec.tool === "change_location")
+  assert.deepEqual(rec.args, args)
+  assert.deepEqual(rec.event, {
+    previousLocationName: "Подножие башни",
+    newLocationName: "Зал башни",
+    enemiesOfPreviousLocation: [{ id: "e1", name: "Гоблин-часовой" }],
+  })
+  assert.deepEqual(r.state.location, args)
+  assert.deepEqual(r.state.enemies, [])
+})
+
+test("change_location in combat or without a description returns a failed result", () => {
+  const fighting = { ...state, combat: { order: ["p1", "e1"], round: 1, activeCreatureId: "p1" } }
+  const args = { name: "Зал башни", description: "Пыльный зал." }
+  const inCombat = executeTools([{ name: "change_location", args }], fighting, fixed(0.5))
+  failureText(inCombat.results[0], "change_location")
+  assert.equal(inCombat.state, fighting)
+
+  const noDescription = executeTools(
+    [{ name: "change_location", args: { name: "Зал башни" } }],
+    state,
+    fixed(0.5),
+  )
+  failureText(noDescription.results[0], "change_location")
+  assert.equal(noDescription.state, state)
 })
 
 test("start_combat call is executed by the engine and recorded", () => {
@@ -766,6 +797,7 @@ test("handleMessage: model is offered every tool", async () => {
     "apply_heal",
     "apply_healing_potion",
     "attack",
+    "change_location",
     "death_save",
     "delete_items",
     "end_combat",
