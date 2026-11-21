@@ -90,6 +90,14 @@ export const ToolDescriptions = {
     "(a thought or a plan is not a move; a step inside the same place is not either). " +
     "description: what the place looks like, not what the character does. " +
     "All enemies of the old place stay behind (bodies too). Not in combat: end_combat first if they escape.",
+  update_world_book:
+    "The world book (worldBook in the game state) keeps facts the story will need later: a named NPC " +
+    "and what they want, a place, a quest, a promise or a deal. Record such a fact in the same response " +
+    "in which it appears. One short fact per note, not a retelling of the scene " +
+    "(like 'Miller Hob: his daughter is missing, promised a horse for finding her'), in the language of the game; " +
+    "no hit points or items. " +
+    "text without id adds a note; id with text rewrites that note (prefer it to a duplicate); " +
+    "id without text deletes it (a finished quest, a fact that no longer holds).",
 } satisfies Record<ToolName, string>
 
 export const toolDefinitions: ToolDefinition[] = Object.keys(ToolArgsSchemas).map((tool) => {

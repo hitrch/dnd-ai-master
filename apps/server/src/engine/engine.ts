@@ -34,6 +34,8 @@ import {
   SpawnEnemiesArgs,
   EnemySummary,
   ChangeLocationArgs,
+  UpdateWorldBookArgs,
+  UpdateBookEventOutcome,
 } from "@dnd/shared"
 
 // Random number generator in [0, 1). Math.random in the game, replaced in tests.
@@ -1000,4 +1002,65 @@ export function changeLocation(
       enemies: [],
     },
   }
+}
+
+export function updateWorldBook(
+  state: GameState,
+  args: UpdateWorldBookArgs,
+): ReturnResult<"update_world_book"> {
+  const { id, text } = args
+  if (!id && !text)
+    return { isOk: false, errorText: "Both id and text are missing when updating world book" }
+
+  if (id) {
+    const noteToBeUpdated = state.worldBook.find((note) => note.id === id)
+    if (!noteToBeUpdated) return { isOk: false, errorText: `Note with id ${id} not found` }
+    if (text) {
+      return {
+        isOk: true,
+        event: {
+          id,
+          outcome: "updated",
+        },
+        state: {
+          ...state,
+          worldBook: state.worldBook.map((note) => (note.id === id ? { ...note, text } : note)),
+        },
+      }
+    }
+    return {
+      isOk: true,
+      event: {
+        id: id,
+        outcome: "deleted",
+      },
+      state: { ...state, worldBook: state.worldBook.filter((note) => note.id !== id) },
+    }
+  } else {
+    if (text) {
+      const worldBookMaxLength = 20
+      if (state.worldBook.length >= worldBookMaxLength)
+        return {
+          isOk: false,
+          errorText:
+            `The world book is full (${worldBookMaxLength} notes): delete a note that no longer matters ` +
+            "(its id without text) or rewrite an existing note to hold this fact, then try again.",
+        }
+
+      const noteIdsInUse = new Set(state.worldBook.map((note) => note.id))
+      const newId = generateEntityId("note", noteIdsInUse)
+      return {
+        isOk: true,
+        event: {
+          id: newId,
+          outcome: "created",
+        },
+        state: { ...state, worldBook: [...state.worldBook, { id: newId, text: text }] },
+      }
+    }
+  }
+
+  throw new Error(
+    "Unreachable in updateWorldBook: args without id and text are refused at the start",
+  )
 }

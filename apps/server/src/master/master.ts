@@ -14,6 +14,7 @@ import {
   spawnEnemies,
   startCombat,
   transferItems,
+  updateWorldBook,
 } from "../engine/engine"
 import type { Rng } from "../engine/engine"
 import { ToolArgsSchemas } from "@dnd/shared"
@@ -354,6 +355,28 @@ export function executeTools(tools: ToolCall[], gameState: GameState, rng: Rng):
           tool: "change_location",
           args: changeLocationArgs.data,
           event: changeLocationResult.event,
+        })
+        break
+      }
+      case "update_world_book": {
+        const updateWorldBookArgs = ToolArgsSchemas.update_world_book.safeParse(call.args)
+        if (!updateWorldBookArgs.success) {
+          fail(call.name, z.prettifyError(updateWorldBookArgs.error))
+          continue
+        }
+
+        const updateWorldBookResult = updateWorldBook(draft, updateWorldBookArgs.data)
+        if (!updateWorldBookResult.isOk) {
+          fail(call.name, updateWorldBookResult.errorText)
+          continue
+        }
+
+        draft = updateWorldBookResult.state
+        results.push({
+          isOk: true,
+          tool: "update_world_book",
+          args: updateWorldBookArgs.data,
+          event: updateWorldBookResult.event,
         })
         break
       }

@@ -17,10 +17,12 @@ import {
   giveItems,
   spawnEnemies,
   changeLocation,
+  updateWorldBook,
 } from "./engine"
 
 const state = GameStateSchema.parse({
   location: { name: "Подножие башни", description: "Каменная башня, у входа дубовая дверь." },
+  worldBook: [],
   players: [
     {
       id: "p1",
@@ -2460,4 +2462,129 @@ test("location schema: name and description are required strings, extra keys are
   assert.equal(schema.safeParse({ name: 1, description: "Пыльный зал." }).success, false)
   // the state uses the same location shape
   assert.equal(GameStateSchema.safeParse({ ...state, location: "Подножие башни" }).success, false)
+})
+
+const innkeeper = { id: "note-1", text: "Трактирщик Грегор обещал 5 монет за голову гоблина." }
+const villageWell = { id: "note-3", text: "В колодце деревни что-то светится по ночам." }
+const withBook = (worldBook: GameState["worldBook"]): GameState => ({ ...state, worldBook })
+
+test("world book: text without id adds a note at the end with an engine id", () => {
+  const s = withBook([innkeeper])
+  const r = updateWorldBook(s, { text: "Квест: найти пропавшую дочь мельника." })
+  assert.ok(r.isOk)
+  assert.deepEqual(r.event, { id: "note-2", outcome: "created" })
+  assert.deepEqual(r.state.worldBook, [
+    innkeeper,
+    { id: "note-2", text: "Квест: найти пропавшую дочь мельника." },
+  ])
+  assert.equal(GameStateSchema.safeParse(r.state).success, true)
+  // the original is untouched
+  assert.deepEqual(s.worldBook, [innkeeper])
+})
+
+test("world book: the first note in an empty book is note-1, ids skip the taken ones", () => {
+  const first = updateWorldBook(state, { text: "Башня принадлежала магу Ирвину." })
+  assert.ok(first.isOk)
+  assert.equal(first.event.id, "note-1")
+
+  // note-1 and note-3 are taken: the next free one is note-2, then note-4
+  const a = updateWorldBook(withBook([innkeeper, villageWell]), { text: "Первый факт." })
+  assert.ok(a.isOk)
+  const b = updateWorldBook(a.state, { text: "Второй факт." })
+  assert.ok(b.isOk)
+  assert.deepEqual(
+    b.state.worldBook.map((n) => n.id),
+    ["note-1", "note-3", "note-2", "note-4"],
+  )
+})
+
+test("world book: id with text rewrites that note in place and keeps the others", () => {
+  const s = withBook([innkeeper, villageWell])
+  const text = "Трактирщик Грегор заплатил 5 монет, долг закрыт."
+  const r = updateWorldBook(s, { id: "note-1", text })
+  assert.ok(r.isOk)
+  assert.deepEqual(r.event, { id: "note-1", outcome: "updated" })
+  assert.deepEqual(r.state.worldBook, [{ id: "note-1", text }, villageWell])
+  assert.deepEqual(s.worldBook, [innkeeper, villageWell])
+})
+
+test("world book: id without text deletes that note and keeps the others", () => {
+  const s = withBook([innkeeper, villageWell])
+  const r = updateWorldBook(s, { id: "note-1" })
+  assert.ok(r.isOk)
+  assert.deepEqual(r.event, { id: "note-1", outcome: "deleted" })
+  assert.deepEqual(r.state.worldBook, [villageWell])
+  assert.deepEqual(s.worldBook, [innkeeper, villageWell])
+})
+
+test("world book: a deleted id is free again for the next note", () => {
+  const deleted = updateWorldBook(withBook([innkeeper, villageWell]), { id: "note-1" })
+  assert.ok(deleted.isOk)
+  const added = updateWorldBook(deleted.state, { text: "Новый факт." })
+  assert.ok(added.isOk)
+  assert.equal(added.event.id, "note-1")
+})
+
+const fullBook = Array.from({ length: 20 }, (_, i) => ({
+  id: `note-${i + 1}`,
+  text: `Факт ${i + 1}.`,
+}))
+
+test("world book: a full book refuses a new note but still allows rewriting and deleting", () => {
+  const s = withBook(fullBook)
+  const added = updateWorldBook(s, { text: "Двадцать первый факт." })
+  assert.equal(added.isOk, false)
+  assert.ok(
+    !added.isOk && added.errorText.includes("delete"),
+    "the refusal should suggest deleting",
+  )
+
+  const rewritten = updateWorldBook(s, { id: "note-5", text: "Факт 5, исправленный." })
+  assert.ok(rewritten.isOk)
+  assert.equal(rewritten.state.worldBook.length, 20)
+
+  const deleted = updateWorldBook(s, { id: "note-5" })
+  assert.ok(deleted.isOk)
+  assert.equal(deleted.state.worldBook.length, 19)
+})
+
+test("world book: refusals", () => {
+  const s = withBook([innkeeper])
+  const cases: [string, Parameters<typeof updateWorldBook>[1]][] = [
+    ["nothing to do", {}],
+    ["unknown id with text", { id: "note-9", text: "Факт." }],
+    ["unknown id without text", { id: "note-9" }],
+  ]
+  for (const [name, args] of cases) {
+    assert.equal(updateWorldBook(s, args).isOk, false, name)
+  }
+})
+
+test("world book: works in combat, the turn and the creatures stay", () => {
+  const s: GameState = {
+    ...state,
+    combat: { order: ["p1", "e1"], round: 2, activeCreatureId: "e1" },
+  }
+  const r = updateWorldBook(s, { text: "Гоблины служат кому-то в башне." })
+  assert.ok(r.isOk)
+  assert.deepEqual(r.state.combat, s.combat)
+  assert.deepEqual(r.state.players, s.players)
+  assert.deepEqual(r.state.enemies, s.enemies)
+})
+
+test("world book schemas: text up to 200 characters, a note in the state is never empty", () => {
+  const args = ToolArgsSchemas.update_world_book
+  assert.equal(args.safeParse({ text: "я".repeat(200) }).success, true)
+  assert.equal(args.safeParse({ text: "я".repeat(201) }).success, false)
+  // deleting is id without text; an empty text is not a way to delete
+  assert.equal(args.safeParse({ id: "note-1" }).success, true)
+  assert.equal(args.safeParse({ id: "note-1", text: "" }).success, false)
+  assert.equal(args.safeParse({}).success, true)
+
+  const book = (worldBook: unknown) => GameStateSchema.safeParse({ ...state, worldBook }).success
+  assert.equal(book([innkeeper]), true)
+  assert.equal(book([{ id: "note-1", text: "" }]), false)
+  assert.equal(book([{ id: "note-1", text: "я".repeat(201) }]), false)
+  assert.equal(book([{ text: "Без id." }]), false)
+  assert.equal(GameStateSchema.safeParse({ ...state, worldBook: undefined }).success, false)
 })

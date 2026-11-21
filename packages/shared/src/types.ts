@@ -13,6 +13,7 @@ import {
   SpawnEnemiesArgs,
   StartCombatArgs,
   TransferItemsArgs,
+  UpdateWorldBookArgs,
 } from "./tools"
 import type { Skill } from "./skills"
 import type { GameState } from "./state"
@@ -74,8 +75,19 @@ export type ToolMap = {
     event: ChangeLocationEvent
     args: ChangeLocationArgs
   }
+  update_world_book: {
+    event: UpdateWorldBookEvent
+    args: UpdateWorldBookArgs
+  }
 }
 export type ToolName = keyof ToolMap
+
+export type UpdateBookEventOutcome = "created" | "updated" | "deleted"
+
+export type UpdateWorldBookEvent = {
+  id: string
+  outcome: UpdateBookEventOutcome
+}
 
 export type ChangeLocationEvent = {
   previousLocationName: string

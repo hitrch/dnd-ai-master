@@ -105,9 +105,21 @@ export const LocationSchema = z.object({
 })
 export type LocationInfo = z.infer<typeof LocationSchema>
 
+export const NoteWithoutIdSchema = z.object({
+  text: z.string().min(1).max(200),
+})
+export type NoteWithoutId = z.infer<typeof NoteWithoutIdSchema>
+
+export const NoteSchema = z.object({
+  ...NoteWithoutIdSchema.shape,
+  id: z.string(),
+})
+export type Note = z.infer<typeof NoteSchema>
+
 export const GameStateSchema = z
   .object({
     location: LocationSchema,
+    worldBook: z.array(NoteSchema),
     players: z.array(CharacterSchema),
     enemies: z.array(EnemySchema),
     combat: CombatSchema.nullable(),

@@ -11,6 +11,7 @@ import type { ActionStore, ToolResult } from "../types"
 
 const state = GameStateSchema.parse({
   location: { name: "Подножие башни", description: "Каменная башня, у входа дубовая дверь." },
+  worldBook: [],
   players: [
     {
       id: "p1",
@@ -301,6 +302,47 @@ test("change_location call is executed by the engine and recorded", () => {
   })
   assert.deepEqual(r.state.location, args)
   assert.deepEqual(r.state.enemies, [])
+})
+
+test("update_world_book calls add, rewrite and delete in one batch, each sees the previous one", () => {
+  const r = executeTools(
+    [
+      { name: "update_world_book", args: { text: "Трактирщик Грегор ищет пропавшую дочь." } },
+      { name: "update_world_book", args: { text: "Мельник боится башни." } },
+      { name: "update_world_book", args: { id: "note-1", text: "Дочь Грегора в башне." } },
+      { name: "update_world_book", args: { id: "note-2" } },
+    ],
+    state,
+    fixed(0.5),
+  )
+  assert.deepEqual(
+    r.results.map((res) => res.isOk && res.tool === "update_world_book" && res.event),
+    [
+      { id: "note-1", outcome: "created" },
+      { id: "note-2", outcome: "created" },
+      { id: "note-1", outcome: "updated" },
+      { id: "note-2", outcome: "deleted" },
+    ],
+  )
+  assert.deepEqual(r.state.worldBook, [{ id: "note-1", text: "Дочь Грегора в башне." }])
+})
+
+test("update_world_book with an empty text or an unknown id returns a failed result", () => {
+  const empty = executeTools(
+    [{ name: "update_world_book", args: { id: "note-1", text: "" } }],
+    state,
+    fixed(0.5),
+  )
+  failureText(empty.results[0], "update_world_book")
+  assert.equal(empty.state, state)
+
+  const unknown = executeTools(
+    [{ name: "update_world_book", args: { id: "note-1" } }],
+    state,
+    fixed(0.5),
+  )
+  failureText(unknown.results[0], "update_world_book")
+  assert.equal(unknown.state, state)
 })
 
 test("change_location in combat or without a description returns a failed result", () => {
@@ -807,6 +849,7 @@ test("handleMessage: model is offered every tool", async () => {
     "spawn_enemies",
     "start_combat",
     "transfer_items",
+    "update_world_book",
   ])
   for (const t of tools) {
     assert.ok(t.description.length > 0, `${t.name} has no description`)

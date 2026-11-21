@@ -72,6 +72,7 @@ export function createSampleState(): GameState {
       description:
         "Старая каменная башня на холме. Дубовая дверь у входа приоткрыта, вокруг мокрая трава и следы сапог.",
     },
+    worldBook: [],
     players: [
       {
         id: "p1",
