@@ -1,8 +1,14 @@
 import { ApiError, GoogleGenAI } from "@google/genai"
 import type { Content, GenerateContentResponse, Tool } from "@google/genai"
-import type { ModelProvider, ModelResponse, StoryMessage, ToolCall, ToolDefinition } from "../types"
-import { isArrayNotEmpty } from "../../utils"
-import { ModelError } from "../modelError"
+import type {
+  ModelProvider,
+  ModelResponse,
+  StoryMessage,
+  ToolCall,
+  ToolDefinition,
+} from "../types.js"
+import { isArrayNotEmpty } from "../../utils.js"
+import { ModelError } from "../modelError.js"
 
 export function translateStoryMessagesToContent(messages: StoryMessage[]): Content[] {
   const content: Content[] = []

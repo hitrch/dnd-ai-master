@@ -3,11 +3,11 @@ import type { TestContext } from "node:test"
 import assert from "node:assert/strict"
 import { GameStateSchema } from "@dnd/shared"
 import type { GameState } from "@dnd/shared"
-import { compactHistory, executeTools, Master, splitHistoryForSummary } from "./master"
-import { modelDefinition } from "./modelDefinition"
-import { toolDefinitions } from "./toolDefinitions"
-import type { ModelProvider, ModelResponse, StoryMessage, ToolDefinition } from "../model/types"
-import type { ActionStore, ToolResult } from "../types"
+import { compactHistory, executeTools, Master, splitHistoryForSummary } from "./master.js"
+import { modelDefinition } from "./modelDefinition.js"
+import { toolDefinitions } from "./toolDefinitions.js"
+import type { ModelProvider, ModelResponse, StoryMessage, ToolDefinition } from "../model/types.js"
+import type { ActionStore, ToolResult } from "../types.js"
 
 const state = GameStateSchema.parse({
   location: { name: "Подножие башни", description: "Каменная башня, у входа дубовая дверь." },

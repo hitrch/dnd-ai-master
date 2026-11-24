@@ -1,7 +1,7 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
 import { GameStateSchema } from "@dnd/shared"
-import { GameStateService } from "./gameStateService"
+import { GameStateService } from "./gameStateService.js"
 
 const makeState = () =>
   GameStateSchema.parse({

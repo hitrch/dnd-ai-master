@@ -1,6 +1,6 @@
-import type { ModelProvider, ModelResponse, StoryMessage, ToolDefinition } from "./types"
+import type { ModelProvider, ModelResponse, StoryMessage, ToolDefinition } from "./types.js"
 import { setTimeout as delay } from "node:timers/promises"
-import { ModelError } from "./modelError"
+import { ModelError } from "./modelError.js"
 
 export interface RetryOptions {
   maxAttempts: number

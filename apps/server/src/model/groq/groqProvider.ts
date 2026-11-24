@@ -1,4 +1,10 @@
-import type { ModelProvider, ModelResponse, StoryMessage, ToolCall, ToolDefinition } from "../types"
+import type {
+  ModelProvider,
+  ModelResponse,
+  StoryMessage,
+  ToolCall,
+  ToolDefinition,
+} from "../types.js"
 import { APIError, Groq } from "groq-sdk"
 import type {
   ChatCompletion,
@@ -6,8 +12,8 @@ import type {
   ChatCompletionMessageToolCall,
   ChatCompletionTool,
 } from "groq-sdk/resources/chat"
-import { ModelError } from "../modelError"
-import { isArrayNotEmpty, isPlainObject } from "../../utils"
+import { ModelError } from "../modelError.js"
+import { isArrayNotEmpty, isPlainObject } from "../../utils.js"
 
 function isToolUseFailed(error: unknown): boolean {
   return (

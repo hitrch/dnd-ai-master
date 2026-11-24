@@ -1,10 +1,10 @@
 import { GameStateSchema } from "@dnd/shared"
 import type { GameState } from "@dnd/shared"
-import { GeminiProvider } from "./model/gemini/geminiProvider"
-import { GroqProvider } from "./model/groq/groqProvider"
-import { RetryingModelProvider } from "./model/retryingModelProvider"
-import { ModelError } from "./model/modelError"
-import type { ModelProvider } from "./model/types"
+import { GeminiProvider } from "./model/gemini/geminiProvider.js"
+import { GroqProvider } from "./model/groq/groqProvider.js"
+import { RetryingModelProvider } from "./model/retryingModelProvider.js"
+import { ModelError } from "./model/modelError.js"
+import type { ModelProvider } from "./model/types.js"
 
 // Shared wiring for the entry points (index.ts sandbox, console client): which model to use and a starting game
 

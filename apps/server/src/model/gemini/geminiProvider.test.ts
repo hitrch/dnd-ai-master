@@ -9,11 +9,11 @@ import {
   translateStoryMessagesToContent,
   translateToModelError,
   translateToolDefinitionsToTools,
-} from "./geminiProvider"
-import { toolDefinitions } from "../../master/toolDefinitions"
-import type { ToolDefinition } from "../types"
-import type { ToolResult } from "../../types"
-import { ModelError } from "../modelError"
+} from "./geminiProvider.js"
+import { toolDefinitions } from "../../master/toolDefinitions.js"
+import type { ToolDefinition } from "../types.js"
+import type { ToolResult } from "../../types.js"
+import { ModelError } from "../modelError.js"
 
 const checkRecord: GameRecord = {
   tool: "roll_check",

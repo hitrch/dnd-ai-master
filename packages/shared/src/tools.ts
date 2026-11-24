@@ -1,13 +1,13 @@
 import { z } from "zod"
-import { SkillSchema } from "./skills"
-import type { ToolName } from "./types"
+import { SkillSchema } from "./skills.js"
+import type { ToolName } from "./types.js"
 import {
   DiceSchema,
   EnemySchema,
   ItemWithoutIdSchema,
   LocationSchema,
   NoteWithoutIdSchema,
-} from "./state"
+} from "./state.js"
 
 export const RollCheckArgsSchema = z.object({
   characterId: z.string(),

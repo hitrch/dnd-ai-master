@@ -15,11 +15,11 @@ import {
   translateStoryMessagesToMessages,
   translateToModelError,
   translateToolDefinitionsToTools,
-} from "./groqProvider"
-import { toolDefinitions } from "../../master/toolDefinitions"
-import type { StoryMessage, ToolCall } from "../types"
-import { ModelError } from "../modelError"
-import type { ToolResult } from "../../types"
+} from "./groqProvider.js"
+import { toolDefinitions } from "../../master/toolDefinitions.js"
+import type { StoryMessage, ToolCall } from "../types.js"
+import { ModelError } from "../modelError.js"
+import type { ToolResult } from "../../types.js"
 
 const instruction = "You are the master."
 

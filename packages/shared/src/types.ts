@@ -14,9 +14,9 @@ import {
   StartCombatArgs,
   TransferItemsArgs,
   UpdateWorldBookArgs,
-} from "./tools"
-import type { Skill } from "./skills"
-import type { GameState } from "./state"
+} from "./tools.js"
+import type { Skill } from "./skills.js"
+import type { GameState } from "./state.js"
 
 export type ToolMap = {
   roll_check: {

@@ -1,7 +1,7 @@
 import type { ToolName } from "@dnd/shared"
 import { ToolArgsSchemas } from "@dnd/shared"
 import { z } from "zod"
-import type { ToolDefinition } from "../model/types"
+import type { ToolDefinition } from "../model/types.js"
 
 // Every description is sent with every model request, so keep them short.
 // Rules shared by all tools (numbers come only from the engine, ids from the game state, turn order,

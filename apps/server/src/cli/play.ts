@@ -1,6 +1,6 @@
-import { createModel, createSampleState, maxRounds } from "../setup"
-import { GameStateService } from "../storage/gameStateService"
-import { Master } from "../master/master"
+import { createModel, createSampleState, maxRounds } from "../setup.js"
+import { GameStateService } from "../storage/gameStateService.js"
+import { Master } from "../master/master.js"
 import { createInterface } from "node:readline/promises"
 import { stdin, stdout } from "node:process"
 

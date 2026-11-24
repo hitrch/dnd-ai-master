@@ -1,6 +1,6 @@
-import { GameStateService } from "./storage/gameStateService"
-import { Master } from "./master/master"
-import { createModel, createSampleState, maxRounds } from "./setup"
+import { GameStateService } from "./storage/gameStateService.js"
+import { Master } from "./master/master.js"
+import { createModel, createSampleState, maxRounds } from "./setup.js"
 
 // Manual check: one real model request through Master, the model should call roll_check
 // with the character id taken from the game state in the system instruction

@@ -18,7 +18,7 @@ import {
   spawnEnemies,
   changeLocation,
   updateWorldBook,
-} from "./engine"
+} from "./engine.js"
 
 const state = GameStateSchema.parse({
   location: { name: "Подножие башни", description: "Каменная башня, у входа дубовая дверь." },

@@ -1,4 +1,4 @@
-import type { ModelProvider, StoryMessage, ToolCall } from "../model/types"
+import type { ModelProvider, StoryMessage, ToolCall } from "../model/types.js"
 import {
   applyDamage,
   applyHeal,
@@ -15,14 +15,14 @@ import {
   startCombat,
   transferItems,
   updateWorldBook,
-} from "../engine/engine"
-import type { Rng } from "../engine/engine"
+} from "../engine/engine.js"
+import type { Rng } from "../engine/engine.js"
 import { ToolArgsSchemas } from "@dnd/shared"
 import type { GameState } from "@dnd/shared"
-import { isTool } from "../utils"
-import { toolDefinitions } from "./toolDefinitions"
-import { modelDefinition } from "./modelDefinition"
-import type { ActionStore, ToolResult, ToolRunResult } from "../types"
+import { isTool } from "../utils.js"
+import { toolDefinitions } from "./toolDefinitions.js"
+import { modelDefinition } from "./modelDefinition.js"
+import type { ActionStore, ToolResult, ToolRunResult } from "../types.js"
 import { z } from "zod"
 
 export type SplitHistoryForSummaryResult = {

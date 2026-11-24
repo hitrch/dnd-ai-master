@@ -1,8 +1,8 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { RetryingModelProvider } from "./retryingModelProvider"
-import { ModelError } from "./modelError"
-import type { ModelProvider, ModelResponse, StoryMessage, ToolDefinition } from "./types"
+import { RetryingModelProvider } from "./retryingModelProvider.js"
+import { ModelError } from "./modelError.js"
+import type { ModelProvider, ModelResponse, StoryMessage, ToolDefinition } from "./types.js"
 
 const okResponse: ModelResponse = { messageType: "model_text", text: "Дверь открыта." }
 const messages: StoryMessage[] = [{ messageType: "player_text", text: "Открываю дверь." }]

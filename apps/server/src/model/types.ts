@@ -1,5 +1,5 @@
 import type { ToolName } from "@dnd/shared"
-import type { ToolResult } from "../types"
+import type { ToolResult } from "../types.js"
 
 export type ToolCall = {
   name: string
