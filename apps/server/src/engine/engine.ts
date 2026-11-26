@@ -1,4 +1,5 @@
-import {
+import { getItemsIdsFromState } from "@dnd/shared"
+import type {
   GameState,
   RollCheckArgs,
   ApplyDamageArgs,
@@ -26,7 +27,6 @@ import {
   ApplyHealingPotionArgs,
   HealOutcome,
   TransferItemsArgs,
-  getItemsIdsFromState,
   DeleteItemsArgs,
   GiveItemsArgs,
   ItemSummary,
