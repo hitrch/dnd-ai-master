@@ -2,6 +2,8 @@ import "reflect-metadata"
 import { NestFactory } from "@nestjs/core"
 import { AppModule } from "./api/app.module.js"
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger"
+import { ConfigService } from "@nestjs/config"
+import type { Env } from "./api/env.js"
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule)
@@ -11,7 +13,9 @@ async function bootstrap() {
     .build()
   const swaggerDoc = SwaggerModule.createDocument(app, swaggerConfig)
   SwaggerModule.setup("swagger", app, swaggerDoc)
-  await app.listen(process.env.PORT || 3000)
+  const configService: ConfigService<Env, true> = app.get(ConfigService)
+  const port = configService.get("PORT", { infer: true })
+  await app.listen(port)
 }
 
 await bootstrap()
